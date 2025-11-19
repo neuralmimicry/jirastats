@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jirastats"
+version = "0.1.0"
+description = "Jira reporting and analytics utilities with discovery-driven JQL refinement"
+readme = "README.md"
+authors = [{ name = "JiraStats Maintainers" }]
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+keywords = ["jira", "reporting", "analytics", "confluence", "worklogs"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+# We intentionally avoid duplicating runtime deps here to keep requirements.txt as the source of truth
+# for this repository. When publishing, you may choose to copy them here.
+
+[project.urls]
+Homepage = "https://example.com/"
+
+[project.scripts]
+jirastats = "jirastats.cli:main"
+# Preferred namespaced CLI (best practice):
+# Users can also call `python -m jirastats.cli`
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = [
+  "tests*",
+  "*.csv",
+  "*.png",
+  "*.json",
+  "*.ini",
+]

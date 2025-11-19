@@ -1,0 +1,7 @@
+Flask
+requests
+jira
+holidays
+fuzzywuzzy
+matplotlib
+pytest

@@ -1,0 +1,46 @@
+{
+  "company": {
+    "name": "VirginMediaO2 Ltd",
+    "jira_url": "https://virginmediao2.atlassian.net"
+  },
+  "data_files": {
+    "engineer_names": "engineer_names.csv",
+    "leaderboard": "leaderboard.csv",
+    "monthly_csv_prefix": "monthly_subtask_summary_data"
+  },
+  "issue_types": ["Bug", "Improvement", "New Feature", "Spike", "Epic", "Story", "Task", "Sub-task"],
+  "priority_ranking": {
+    "Highest": 1,
+    "High": 2,
+    "Medium": 3,
+    "Low": 4,
+    "Lowest": 5
+  },
+  "issue_ranking": {
+    "Epic": 1,
+    "Bug": 2,
+    "Spike": 3,
+    "New Feature": 4,
+    "Improvement": 5,
+    "Story": 6,
+    "Task": 7,
+    "Sub-task": 8
+  },
+  "custom_fields": {
+    "skills_field": "customfield_10900",
+    "workstream_field": "customfield_10952",
+    "universe_skill_name": "UniVerse"
+  },
+  "office_hours": {
+    "start_hour": 9,
+    "end_hour": 17,
+    "country": "GB"
+  },
+  "discovery": {
+    "enabled": true,
+    "keywords": ["CTO", "DNP", "DNT", "Digital Network Products"],
+    "confluence_space_keys": [],
+    "jira_project_keys": [],
+    "cache_ttl_minutes": 120
+  }
+}

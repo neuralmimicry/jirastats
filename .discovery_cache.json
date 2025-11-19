@@ -1,0 +1,49 @@
+{
+  "timestamp": 1763554573,
+  "result": {
+    "projects": [
+      "PRJ"
+    ],
+    "epics": [
+      "PRJ-1",
+      "PRJ-2"
+    ],
+    "spaces": [],
+    "pages": [],
+    "fields": {
+      "start_date": [
+        "customfield_1"
+      ],
+      "end_date": [
+        "customfield_2"
+      ],
+      "due_date": [
+        "duedate"
+      ],
+      "updated": [
+        "updated"
+      ],
+      "created": [
+        "created"
+      ],
+      "resolutiondate": [
+        "resolutiondate"
+      ],
+      "progress": [
+        "progress",
+        "aggregateprogress"
+      ],
+      "statuscategorychangedate": [
+        "statuscategorychangedate"
+      ],
+      "assignee": [
+        "assignee"
+      ],
+      "epic_link": [
+        "Epic Link",
+        "epicLink",
+        "parentEpic"
+      ]
+    }
+  }
+}
