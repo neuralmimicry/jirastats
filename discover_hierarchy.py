@@ -74,21 +74,22 @@ def load_discovery_config(config: Dict[str, Any]) -> DiscoveryConfig:
     return dc
 
 
-def _read_cache(cache_file: str) -> Optional[Tuple[int, DiscoveryResult]]:
+def _read_cache(cache_file: str) -> Optional[Tuple[int, Optional[str], DiscoveryResult]]:
     try:
         with open(cache_file, "r") as f:
             data = json.load(f)
         ts = data.get("timestamp")
+        base_url = data.get("base_url")
         res = DiscoveryResult(**data.get("result", {}))
-        return ts, res
+        return ts, base_url, res
     except Exception:
         return None
 
 
-def _write_cache(cache_file: str, result: DiscoveryResult) -> None:
+def _write_cache(cache_file: str, result: DiscoveryResult, base_url: Optional[str] = None) -> None:
     try:
         with open(cache_file, "w") as f:
-            json.dump({"timestamp": _now_epoch(), "result": result.__dict__}, f, indent=2)
+            json.dump({"timestamp": _now_epoch(), "base_url": base_url, "result": result.__dict__}, f, indent=2)
     except Exception:
         pass
 
@@ -264,11 +265,11 @@ def discover_hierarchy(jira_client, jira_base_url: str, auth: Tuple[str, str], c
     if not dcfg.enabled:
         return DiscoveryResult()
 
-    # Basic file cache to avoid repeated probing
+    # Basic file cache to avoid repeated probing; only reuse if base URL matches
     cache = _read_cache(DEFAULT_CACHE_FILE)
     if cache:
-        ts, res = cache
-        if (_now_epoch() - int(ts)) <= dcfg.cache_ttl_minutes * 60:
+        ts, cached_base, res = cache
+        if (cached_base == jira_base_url) and ((_now_epoch() - int(ts)) <= dcfg.cache_ttl_minutes * 60):
             return res
 
     spaces, pages = _probe_confluence(jira_base_url, auth, dcfg)
@@ -283,7 +284,7 @@ def discover_hierarchy(jira_client, jira_base_url: str, auth: Tuple[str, str], c
     fields_map = _discover_fields(jira_client)
 
     result = DiscoveryResult(projects=project_keys, epics=all_epics, spaces=spaces, pages=pages, fields=fields_map)
-    _write_cache(DEFAULT_CACHE_FILE, result)
+    _write_cache(DEFAULT_CACHE_FILE, result, base_url=jira_base_url)
     return result
 
 
@@ -293,12 +294,28 @@ def build_refined_jql(base_jql: str, discovery: DiscoveryResult) -> str:
     return the base_jql unchanged.
 
     We attempt to support both classic "Epic Link" and the newer parentEpic fields.
+
+    Important: If the base_jql contains an ORDER BY clause, it must appear at the very end
+    of the final JQL (after all filters). This function will extract any ORDER BY from the
+    base_jql, combine WHERE-like parts with discovery filters, and then re-append ORDER BY
+    at the end to avoid syntax errors like "Expecting ')' but got 'ORDER'".
     """
     has_projects = bool(discovery.projects)
     has_epics = bool(discovery.epics)
     if not (has_projects or has_epics):
+        # Nothing to refine; return base as-is
         return base_jql
 
+    # Split base_jql into WHERE-ish part and ORDER BY tail (case-insensitive)
+    order_by_part = ""
+    where_part = (base_jql or "").strip()
+    if where_part:
+        m = re.search(r"\border\s+by\b(.+)$", where_part, flags=re.IGNORECASE)
+        if m:
+            order_by_part = " ORDER BY " + m.group(1).strip()
+            where_part = where_part[: m.start()].strip()
+
+    # Build discovery filters
     filters = []
     if has_projects:
         proj_list = ",".join(discovery.projects)
@@ -312,6 +329,15 @@ def build_refined_jql(base_jql: str, discovery: DiscoveryResult) -> str:
         filters.append(f"({epic_filter} OR {epic_self})")
 
     refined = " AND ".join(filters)
-    if base_jql:
-        return f"({base_jql}) AND ({refined})"
-    return refined
+
+    # Combine where_part and refined filters
+    if where_part and refined:
+        combined = f"({where_part}) AND ({refined})"
+    else:
+        combined = where_part or refined
+
+    # Re-append ORDER BY at the end if present
+    final_jql = (combined or "").strip()
+    if order_by_part:
+        final_jql = f"{final_jql}{order_by_part}"
+    return final_jql

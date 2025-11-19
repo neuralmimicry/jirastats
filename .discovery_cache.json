@@ -1,5 +1,6 @@
 {
-  "timestamp": 1763563236,
+  "timestamp": 1763589558,
+  "base_url": "https://virginmediao2.atlassian.net",
   "result": {
     "projects": [
       "CAI",
@@ -14,6 +15,7 @@
       "CFR",
       "CIBO",
       "CLPB",
+      "CMDO",
       "CMP",
       "CMR",
       "CMRP",
@@ -30,8 +32,66 @@
       "DTI"
     ],
     "epics": [
+      "CB2B-1296",
+      "CB2B-1356",
+      "CB2B-403",
+      "CB2B-404",
+      "CB2B-408",
+      "CB2B-410",
+      "CB2B-413",
+      "CB2B-414",
+      "CB2B-415",
+      "CB2B-416",
+      "CB2B-434",
+      "CB2B-436",
+      "CB2B-437",
+      "CB2B-439",
+      "CB2B-440",
+      "CB2B-441",
+      "CB2B-443",
+      "CCP-1035",
+      "CCP-2494",
+      "CCP-767",
+      "CDBR-104",
+      "CDBR-388",
+      "CDBR-419",
+      "CER-126",
+      "CFR-1166",
+      "CFR-1294",
+      "CFR-1468",
+      "CFR-1597",
+      "CFR-1660",
+      "CFR-252",
+      "CFR-415",
+      "CFR-963",
+      "CIBO-81",
+      "CLPB-1202",
+      "CLPB-1292",
+      "CLPB-1293",
+      "CLPB-1379",
+      "CLPB-661",
+      "CLPB-665",
+      "CMDO-110",
+      "CMP-289",
+      "CMR-129",
+      "CMR-58",
+      "CMR-768",
+      "CMR-940",
+      "CPAU-46",
+      "CPAU-977",
+      "CPB-1159",
+      "CPB-278",
+      "CPB-3013",
+      "CPB-356",
+      "CPB-5834",
+      "CSEC-675",
+      "CTD-537",
+      "CTD-557",
+      "CTD-562",
+      "CTD-574",
       "Q1-2026",
-      "Q3-25"
+      "Q3-25",
+      "VMDATA2-44324"
     ],
     "spaces": [],
     "pages": [
@@ -67,6 +127,13 @@
         "id": "6692176565",
         "title": "Digital Online and Offline Prioritisation",
         "url": "/spaces/CD/database/6692176565",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6680936649",
+        "title": "B2B - August Bank Holiday issues",
+        "url": "/spaces/CCATAR/folder/6680936649",
         "extract": null,
         "spaceKey": null
       },
@@ -134,9 +201,86 @@
         "spaceKey": null
       },
       {
+        "id": "6195249160",
+        "title": "Service Quotas - B2B",
+        "url": "/spaces/CCATAR/folder/6195249160",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6195249155",
+        "title": "Security Profiles B2B",
+        "url": "/spaces/CCATAR/folder/6195249155",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6195183618",
+        "title": "Environments - B2B",
+        "url": "/spaces/CCATAR/folder/6195183618",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5786796288",
+        "title": "B2B Designs",
+        "url": "/spaces/CDNP/folder/5786796288",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5750587403",
+        "title": "FNA Retrospectives",
+        "url": "/spaces/CDNP/folder/5750587403",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5750226974",
+        "title": "B2B",
+        "url": "/spaces/CDNP/folder/5750226974",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5735252000",
+        "title": "B2B",
+        "url": "/spaces/RIS/folder/5735252000",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5691015172",
+        "title": "B2B Release Docs",
+        "url": "/spaces/CDNP/folder/5691015172",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
         "id": "5674991890",
         "title": "CTO How-tos",
         "url": "/spaces/CGCP/folder/5674991890",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5473894405",
+        "title": "B2B Retro",
+        "url": "/spaces/CDNP/folder/5473894405",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6975225961",
+        "title": "Past_Pending - DPE004_Requirements.xlsx",
+        "url": "/pages/viewpageattachments.action?pageId=6974767211&preview=%2F6974767211%2F6975225961%2FPast_Pending+-+DPE004_Requirements.xlsx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6973882522",
+        "title": "Worksheet in RetainX Support Model V1.xlsx",
+        "url": "/pages/viewpageattachments.action?pageId=6974636115&preview=%2F6974636115%2F6973882522%2FWorksheet+in+RetainX+Support+Model+V1.xlsx",
         "extract": null,
         "spaceKey": null
       },
@@ -162,6 +306,34 @@
         "spaceKey": null
       },
       {
+        "id": "6968147969",
+        "title": "FNA Retro 18/11/25",
+        "url": "/spaces/CDNP/whiteboard/6968147969",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6966575189",
+        "title": "FNA Retro",
+        "url": "/spaces/CDNP/whiteboard/6966575189",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6963396666",
+        "title": "Knowledge & Offline Faults",
+        "url": "/spaces/DIGARC/pages/6963396666/Knowledge+Offline+Faults",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6963331160",
+        "title": "FNA 2025 End of Year Retro",
+        "url": "/spaces/CDNP/whiteboard/6963331160",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
         "id": "att6963134469",
         "title": "High Level Design Brokered Finance Draft v0.7 (3).docx",
         "url": "/pages/viewpageattachments.action?pageId=6958088199&preview=%2F6958088199%2F6963134469%2FHigh+Level+Design+Brokered+Finance+Draft+v0.7+%283%29.docx",
@@ -172,6 +344,13 @@
         "id": "att6962774026",
         "title": "VM Solution Architecture IQGEO Implementation 0.27.docx",
         "url": "/pages/viewpageattachments.action?pageId=6962774017&preview=%2F6962774017%2F6962774026%2FVM+Solution+Architecture+IQGEO+Implementation+0.27.docx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6959431717",
+        "title": "Re: SOHO - Solution Design",
+        "url": "/spaces/Ada/pages/6945046529/SOHO+-+Solution+Design?focusedCommentId=6959431717",
         "extract": null,
         "spaceKey": null
       },
@@ -193,6 +372,13 @@
         "id": "att6945046697",
         "title": "productorder-generated-openapi.yaml",
         "url": "/pages/viewpageattachments.action?pageId=6945046529&preview=%2F6945046529%2F6945046697%2Fproductorder-generated-openapi.yaml",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6945046529",
+        "title": "SOHO - Solution Design",
+        "url": "/spaces/Ada/pages/6945046529/SOHO+-+Solution+Design",
         "extract": null,
         "spaceKey": null
       },
@@ -232,6 +418,13 @@
         "spaceKey": null
       },
       {
+        "id": "6940000404",
+        "title": "ServiceNow - Remedy Reference Data consumed by B2B via CDO Internal APIGEE as part of VMDATA2-44324 B2B ITSM Connectivity Project",
+        "url": "/spaces/CSEC/pages/6940000404/ServiceNow+-+Remedy+Reference+Data+consumed+by+B2B+via+CDO+Internal+APIGEE+as+part+of+VMDATA2-44324+B2B+ITSM+Connectivity+Project",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
         "id": "att6939017404",
         "title": "PN NTC5120335 B2B ITSM Integration HLD_6.0 (1).pdf",
         "url": "/pages/viewpageattachments.action?pageId=6940000404&preview=%2F6940000404%2F6939017404%2FPN+NTC5120335+B2B+ITSM+Integration+HLD_6.0+%281%29.pdf",
@@ -239,149 +432,16 @@
         "spaceKey": null
       },
       {
-        "id": "6935085390",
-        "title": "User Research Onboarding - Accelerated delivery pipeline for AI",
-        "url": "/spaces/CGCP/pages/6935085390/User+Research+Onboarding+-+Accelerated+delivery+pipeline+for+AI",
+        "id": "att6938787968",
+        "title": "[External] FW- ITTS Security Testing __ SAST & DAST Reports __ B2B ITSM Integration Project.eml",
+        "url": "/pages/viewpageattachments.action?pageId=6940000404&preview=%2F6940000404%2F6938787968%2F%5BExternal%5D+FW-+ITTS+Security+Testing+__+SAST+%26+DAST+Reports+__+B2B+ITSM+Integration+Project.eml",
         "extract": null,
         "spaceKey": null
       },
       {
-        "id": "6934626631",
-        "title": "User Research \u2013 Data Journeys into CTO Cloud Platforms",
-        "url": "/spaces/CGCP/pages/6934626631/User+Research+Data+Journeys+into+CTO+Cloud+Platforms",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6934561047",
-        "title": "User Research- Performance Trouble Shooting",
-        "url": "/spaces/CGCP/pages/6934561047/User+Research-+Performance+Trouble+Shooting",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6934560963",
-        "title": "TOBE Process Proposal (LCM Driven)",
-        "url": "/spaces/CDNP/pages/6934560963/TOBE+Process+Proposal+LCM+Driven",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6934495249",
-        "title": "productorder-generated-openapi (1).yaml",
-        "url": "/pages/viewpageattachments.action?pageId=6934462465&preview=%2F6934462465%2F6934495249%2Fproductorder-generated-openapi+%281%29.yaml",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6934069894",
-        "title": "NPS Personalization - Use case - Discovery.",
-        "url": "/spaces/DS/pages/6934069894/NPS+Personalization+-+Use+case+-+Discovery.",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6934003882",
-        "title": "Release Notes - CTO DNT B2B PETx  - DNT B2B PETx NB #25.11.2 - Nov 11 14:34",
-        "url": "/spaces/CDNP/pages/6934003882/Release+Notes+-+CTO+DNT+B2B+PETx+-+DNT+B2B+PETx+NB+25.11.2+-+Nov+11+14+34",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6933906046",
-        "title": "Design Note: Kana - Care 1 OTP",
-        "url": "/spaces/DIGARC/pages/6933906046/Design+Note+Kana+-+Care+1+OTP",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6933053604",
-        "title": "CallValidate - API Reference Guide v7.29.10.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6756663403&preview=%2F6756663403%2F6933053604%2FCallValidate+-+API+Reference+Guide+v7.29.10.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6932594851",
-        "title": "O2 Daisy_Direct Pins.xlsx",
-        "url": "/pages/viewpageattachments.action?pageId=6780616930&preview=%2F6780616930%2F6932594851%2FO2+Daisy_Direct+Pins.xlsx",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6930268161",
-        "title": "October 2025",
-        "url": "/spaces/IP/pages/6930268161/October+2025",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6929186888",
-        "title": "SKU Directory AS-IS & TO - BE Draft",
-        "url": "/spaces/CDNP/pages/6929186888/SKU+Directory+AS-IS+TO+-+BE+Draft",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6928465937",
-        "title": "Untitled Diagram-1762785788899.drawio",
-        "url": "/plugins/servlet/ac/com.mxgraph.confluence.plugins.diagramly/customContentViewer?content.plugin=ac%3Acom.mxgraph.confluence.plugins.diagramly%3Adrawio-diagram&space.key=CDNP&content.id=6928465937&content.version=14&space.id=5072158723&content.type=custom",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6928465926",
-        "title": "Overview of Danny's SKU Directory Requirements",
-        "url": "/spaces/CDNP/pages/6928465926/Overview+of+Danny+s+SKU+Directory+Requirements",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6928269397",
-        "title": "[DRAFT] VM02 CTO Data Factory - Project Structure.drawio.png",
-        "url": "/pages/viewpageattachments.action?pageId=6927876161&preview=%2F6927876161%2F6928269397%2F%5BDRAFT%5D+VM02+CTO+Data+Factory+-+Project+Structure.drawio.png",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6927876161",
-        "title": "CTO Data Factory: High-Level Resource Hierarchy & Architecture",
-        "url": "/spaces/CGCP/pages/6927876161/CTO+Data+Factory+High-Level+Resource+Hierarchy+Architecture",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6925942821",
-        "title": "Growth Scope User Release Guide v.1.6.0.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6839697464&preview=%2F6839697464%2F6925942821%2FGrowth+Scope+User+Release+Guide+v.1.6.0.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6925811780",
-        "title": "Growth Scope User Release Guide v.1.8.0.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6838747189&preview=%2F6838747189%2F6925811780%2FGrowth+Scope+User+Release+Guide+v.1.8.0.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6925615168",
-        "title": "Growth Scope User Release Guide v.1.9.0.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6837305410&preview=%2F6837305410%2F6925615168%2FGrowth+Scope+User+Release+Guide+v.1.9.0.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6925156399",
-        "title": "Growth Scope User Release Guide v.1.5.0.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6222446757&preview=%2F6222446757%2F6925156399%2FGrowth+Scope+User+Release+Guide+v.1.5.0.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6924828702",
-        "title": "Growth Scope User Release Guide v.1.10.0.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6838190177&preview=%2F6838190177%2F6924828702%2FGrowth+Scope+User+Release+Guide+v.1.10.0.pdf",
+        "id": "att6938689689",
+        "title": "CSEC-675.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6940000404&preview=%2F6940000404%2F6938689689%2FCSEC-675.pdf",
         "extract": null,
         "spaceKey": null
       }

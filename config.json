@@ -38,7 +38,7 @@
   },
   "discovery": {
     "enabled": true,
-    "keywords": ["CTO", "DNP", "DNT", "Digital Network Products"],
+    "keywords": ["CTO", "DNP", "DNT", "MDO", "FNA", "B2B", "Digital Network Products"],
     "confluence_space_keys": [],
     "jira_project_keys": [],
     "cache_ttl_minutes": 120

@@ -26,12 +26,10 @@ def test_fetch_issues_exception_returns_empty():
 
 
 @patch('main.jira_api')
-@patch('main.base64.b64encode')
-def test_create_jira_connection_encodes_and_calls(b64encode, jira_api):
-    b64encode.return_value = b"enc"
+def test_create_jira_connection_uses_basic_auth(jira_api):
     jira_api.return_value = Mock(name='JIRAClient')
     client = m.create_jira_connection("user", "pass")
 
-    b64encode.assert_called_once_with(b"user:pass")
+    # Should construct client via python-jira using basic_auth
     jira_api.assert_called_once()
     assert client is jira_api.return_value

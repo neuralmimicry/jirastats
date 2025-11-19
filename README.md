@@ -23,6 +23,7 @@ Key aspects:
 - Legacy entry point: python run_report.py
 
 The workflow will (optionally) run discovery, refine your JQL, fetch issues, generate monthly CSVs and a leaderboard, and write a consolidated timelines.csv.
+If the refined JQL returns no results, the tool automatically retries with your base JQL to avoid empty runs due to over-filtering.
 
 
 ## Configuration
@@ -69,6 +70,17 @@ Notes
 - custom_fields.* let you map instance-specific field IDs once, instead of changing code.
 - office_hours define the workday and holiday region. Supported codes include GB/UK, US, CA, DE, FR; unknown codes fall back to GB.
 - jql_query provides a base JQL that discovery can refine at runtime.
+- search: controls search behavior. Keys (defaults shown):
+  - prefer_client (bool, default: true): when true or env PREFER_CLIENT_SEARCH=1, use the python-jira client directly (most compatible with Atlassian Cloud). Set to false to prefer HTTP /search/jql.
+  - page_size (int, default: 100): pagination size for HTTP/client explicit pagination.
+  - fail_fast_http (bool, default: true): after first 4xx from /search/jql, immediately fall back to client search.
+  - allow_alt_shapes (bool, default: true): try alternative JSON shapes for /search/jql for broader compatibility.
+  - debug (bool, default: false): enable verbose diagnostics for search; can also use env DEBUG_SEARCH=1.
+  The fetch order is: client path if prefer_client=true → otherwise try `/rest/api/3/search/jql` (top-level payload) → if 4xx and fail_fast_http=true, go straight to python-jira client; otherwise retry once with explicit `fields`/`expand` in the body → then client fallback → optional batch payload retry.
+
+Sorting configuration
+- custom_fields.priority_index_field: Optional custom field id (e.g., "customfield_10104") used to sort issues alphanumerically when generating reports.
+  - If absent on an issue, the tool falls back to Jira's native priority (mapped via priority_ranking) and finally to the issue key for a stable order.
 
 
 ## Discovery and field identification
@@ -90,9 +102,12 @@ Notes
 ## Environment variables
 - JIRA_USERNAME: Jira username (email for Atlassian Cloud)
 - JIRA_PASSWORD: Jira API token or password (API token recommended)
+  - Note: The Jira client now authenticates using python-jira's basic_auth, which works reliably with Atlassian Cloud. Use an API token with your Atlassian account email.
 - JQL_QUERY: Optional base JQL; overrides config.json:jql_query
 - DISCOVERY_KEYWORDS: Optional comma-separated override for discovery.keywords
 - DISCOVERY_DISABLE: If set to 1/true/yes, disables discovery regardless of config
+- PREFER_CLIENT_SEARCH: If set to 1/true/yes, skip HTTP /search calls and use the python-jira client directly
+- DEBUG_TRANSITIONS: If set to 0/false/no, suppresses status transition debug logging. By default, each status change is logged with its timestamp to aid troubleshooting.
 
 
 ## Testing
