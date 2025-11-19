@@ -5,3 +5,4 @@ holidays
 fuzzywuzzy
 matplotlib
 pytest
+python-Levenshtein

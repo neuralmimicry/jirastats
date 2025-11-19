@@ -1,24 +1,414 @@
 {
-  "timestamp": 1763554573,
+  "timestamp": 1763563236,
   "result": {
     "projects": [
-      "PRJ"
+      "CAI",
+      "CB2B",
+      "CCP",
+      "CDBP",
+      "CDBR",
+      "CDNT",
+      "CDS",
+      "CDT",
+      "CER",
+      "CFR",
+      "CIBO",
+      "CLPB",
+      "CMP",
+      "CMR",
+      "CMRP",
+      "CPA",
+      "CPAU",
+      "CPB",
+      "CPNMS",
+      "CSWE",
+      "CTD",
+      "CTOS",
+      "CWT",
+      "DBRM",
+      "DNTR",
+      "DTI"
     ],
     "epics": [
-      "PRJ-1",
-      "PRJ-2"
+      "Q1-2026",
+      "Q3-25"
     ],
     "spaces": [],
-    "pages": [],
+    "pages": [
+      {
+        "id": "6971130036",
+        "title": "Q1-2026 IIA Digital Playback",
+        "url": "/spaces/CD/database/6971130036",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6936133716",
+        "title": "Q1-2026 Digital Planning Agenda",
+        "url": "/spaces/CD/database/6936133716",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6852444240",
+        "title": "CTO Ingestion framework - Google collaboration",
+        "url": "/spaces/CGCP/folder/6852444240",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6699909331",
+        "title": "Digital Playback inc Mini Forum",
+        "url": "/spaces/CD/database/6699909331",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6692176565",
+        "title": "Digital Online and Offline Prioritisation",
+        "url": "/spaces/CD/database/6692176565",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6666846341",
+        "title": "Q3-25 PlanningDigital IIA Playback",
+        "url": "/spaces/CD/database/6666846341",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6640926803",
+        "title": "Jargon Buster (Business Acronyms)",
+        "url": "/spaces/CAI/database/6640926803",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6601212028",
+        "title": "Dependencies",
+        "url": "/spaces/CLPB/database/6601212028",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6600360180",
+        "title": "Digital IIA Playback",
+        "url": "/spaces/CD/database/6600360180",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6501695855",
+        "title": "VDI Access & Resolution",
+        "url": "/spaces/CLPB/database/6501695855",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6501695701",
+        "title": "GO LIVE Tracking",
+        "url": "/spaces/CLPB/database/6501695701",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6437568562",
+        "title": "Action Log (by Alex)",
+        "url": "/spaces/PP/database/6437568562",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6415319085",
+        "title": "Daily Stand Up Issues",
+        "url": "/spaces/CLPB/database/6415319085",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6301057145",
+        "title": "PRM Action Tracker - GIS",
+        "url": "/spaces/CLPB/database/6301057145",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "5674991890",
+        "title": "CTO How-tos",
+        "url": "/spaces/CGCP/folder/5674991890",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6972735636",
+        "title": "Mobile data science SIMo pricing planning",
+        "url": "/spaces/DS/pages/6972735636/Mobile+data+science+SIMo+pricing+planning",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6969720833",
+        "title": "Release Notes - CTO DNT B2B PETx  - DNT B2B PETx NB #25.11.3 - Nov 18 12:53",
+        "url": "/spaces/CDNP/pages/6969720833/Release+Notes+-+CTO+DNT+B2B+PETx+-+DNT+B2B+PETx+NB+25.11.3+-+Nov+18+12+53",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6968147976",
+        "title": "DNT External Dependency Mapping",
+        "url": "/spaces/CAT/whiteboard/6968147976",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6963134469",
+        "title": "High Level Design Brokered Finance Draft v0.7 (3).docx",
+        "url": "/pages/viewpageattachments.action?pageId=6958088199&preview=%2F6958088199%2F6963134469%2FHigh+Level+Design+Brokered+Finance+Draft+v0.7+%283%29.docx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6962774026",
+        "title": "VM Solution Architecture IQGEO Implementation 0.27.docx",
+        "url": "/pages/viewpageattachments.action?pageId=6962774017&preview=%2F6962774017%2F6962774026%2FVM+Solution+Architecture+IQGEO+Implementation+0.27.docx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6959398915",
+        "title": "Release Notes - CTO DNT B2B Products - B2B Release #25.11.2 - Digital Network Product - Nov 12 10:01",
+        "url": "/spaces/CDNP/pages/6959398915/Release+Notes+-+CTO+DNT+B2B+Products+-+B2B+Release+25.11.2+-+Digital+Network+Product+-+Nov+12+10+01",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6953140338",
+        "title": "knowledge_share_session_composer.pptx",
+        "url": "/pages/viewpageattachments.action?pageId=6951960700&preview=%2F6951960700%2F6953140338%2Fknowledge_share_session_composer.pptx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6945046697",
+        "title": "productorder-generated-openapi.yaml",
+        "url": "/pages/viewpageattachments.action?pageId=6945046529&preview=%2F6945046529%2F6945046697%2Fproductorder-generated-openapi.yaml",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6944227340",
+        "title": "13th November 2025",
+        "url": "/spaces/COOP/pages/6944227340/13th+November+2025",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6943834165",
+        "title": "14/11",
+        "url": "/spaces/MOB/pages/6943834165/14+11",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6943703076",
+        "title": "CallValidate - API Reference Guide v7.29.10.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6944686097&preview=%2F6944686097%2F6943703076%2FCallValidate+-+API+Reference+Guide+v7.29.10.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6943277177",
+        "title": "staticip-specs.json",
+        "url": "/pages/viewpageattachments.action?pageId=6945046529&preview=%2F6945046529%2F6943277177%2Fstaticip-specs.json",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6940295718",
+        "title": "VM Solution Architecture IQGEO Implementation 0.27.docx",
+        "url": "/pages/viewpageattachments.action?pageId=6937575455&preview=%2F6937575455%2F6940295718%2FVM+Solution+Architecture+IQGEO+Implementation+0.27.docx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6939017404",
+        "title": "PN NTC5120335 B2B ITSM Integration HLD_6.0 (1).pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6940000404&preview=%2F6940000404%2F6939017404%2FPN+NTC5120335+B2B+ITSM+Integration+HLD_6.0+%281%29.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6935085390",
+        "title": "User Research Onboarding - Accelerated delivery pipeline for AI",
+        "url": "/spaces/CGCP/pages/6935085390/User+Research+Onboarding+-+Accelerated+delivery+pipeline+for+AI",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6934626631",
+        "title": "User Research \u2013 Data Journeys into CTO Cloud Platforms",
+        "url": "/spaces/CGCP/pages/6934626631/User+Research+Data+Journeys+into+CTO+Cloud+Platforms",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6934561047",
+        "title": "User Research- Performance Trouble Shooting",
+        "url": "/spaces/CGCP/pages/6934561047/User+Research-+Performance+Trouble+Shooting",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6934560963",
+        "title": "TOBE Process Proposal (LCM Driven)",
+        "url": "/spaces/CDNP/pages/6934560963/TOBE+Process+Proposal+LCM+Driven",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6934495249",
+        "title": "productorder-generated-openapi (1).yaml",
+        "url": "/pages/viewpageattachments.action?pageId=6934462465&preview=%2F6934462465%2F6934495249%2Fproductorder-generated-openapi+%281%29.yaml",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6934069894",
+        "title": "NPS Personalization - Use case - Discovery.",
+        "url": "/spaces/DS/pages/6934069894/NPS+Personalization+-+Use+case+-+Discovery.",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6934003882",
+        "title": "Release Notes - CTO DNT B2B PETx  - DNT B2B PETx NB #25.11.2 - Nov 11 14:34",
+        "url": "/spaces/CDNP/pages/6934003882/Release+Notes+-+CTO+DNT+B2B+PETx+-+DNT+B2B+PETx+NB+25.11.2+-+Nov+11+14+34",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6933906046",
+        "title": "Design Note: Kana - Care 1 OTP",
+        "url": "/spaces/DIGARC/pages/6933906046/Design+Note+Kana+-+Care+1+OTP",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6933053604",
+        "title": "CallValidate - API Reference Guide v7.29.10.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6756663403&preview=%2F6756663403%2F6933053604%2FCallValidate+-+API+Reference+Guide+v7.29.10.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6932594851",
+        "title": "O2 Daisy_Direct Pins.xlsx",
+        "url": "/pages/viewpageattachments.action?pageId=6780616930&preview=%2F6780616930%2F6932594851%2FO2+Daisy_Direct+Pins.xlsx",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6930268161",
+        "title": "October 2025",
+        "url": "/spaces/IP/pages/6930268161/October+2025",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6929186888",
+        "title": "SKU Directory AS-IS & TO - BE Draft",
+        "url": "/spaces/CDNP/pages/6929186888/SKU+Directory+AS-IS+TO+-+BE+Draft",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6928465937",
+        "title": "Untitled Diagram-1762785788899.drawio",
+        "url": "/plugins/servlet/ac/com.mxgraph.confluence.plugins.diagramly/customContentViewer?content.plugin=ac%3Acom.mxgraph.confluence.plugins.diagramly%3Adrawio-diagram&space.key=CDNP&content.id=6928465937&content.version=14&space.id=5072158723&content.type=custom",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6928465926",
+        "title": "Overview of Danny's SKU Directory Requirements",
+        "url": "/spaces/CDNP/pages/6928465926/Overview+of+Danny+s+SKU+Directory+Requirements",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6928269397",
+        "title": "[DRAFT] VM02 CTO Data Factory - Project Structure.drawio.png",
+        "url": "/pages/viewpageattachments.action?pageId=6927876161&preview=%2F6927876161%2F6928269397%2F%5BDRAFT%5D+VM02+CTO+Data+Factory+-+Project+Structure.drawio.png",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6927876161",
+        "title": "CTO Data Factory: High-Level Resource Hierarchy & Architecture",
+        "url": "/spaces/CGCP/pages/6927876161/CTO+Data+Factory+High-Level+Resource+Hierarchy+Architecture",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6925942821",
+        "title": "Growth Scope User Release Guide v.1.6.0.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6839697464&preview=%2F6839697464%2F6925942821%2FGrowth+Scope+User+Release+Guide+v.1.6.0.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6925811780",
+        "title": "Growth Scope User Release Guide v.1.8.0.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6838747189&preview=%2F6838747189%2F6925811780%2FGrowth+Scope+User+Release+Guide+v.1.8.0.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6925615168",
+        "title": "Growth Scope User Release Guide v.1.9.0.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6837305410&preview=%2F6837305410%2F6925615168%2FGrowth+Scope+User+Release+Guide+v.1.9.0.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6925156399",
+        "title": "Growth Scope User Release Guide v.1.5.0.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6222446757&preview=%2F6222446757%2F6925156399%2FGrowth+Scope+User+Release+Guide+v.1.5.0.pdf",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "att6924828702",
+        "title": "Growth Scope User Release Guide v.1.10.0.pdf",
+        "url": "/pages/viewpageattachments.action?pageId=6838190177&preview=%2F6838190177%2F6924828702%2FGrowth+Scope+User+Release+Guide+v.1.10.0.pdf",
+        "extract": null,
+        "spaceKey": null
+      }
+    ],
     "fields": {
       "start_date": [
-        "customfield_1"
+        "customfield_11415",
+        "customfield_10886",
+        "customfield_10888",
+        "customfield_12131",
+        "customfield_10022",
+        "customfield_10015",
+        "customfield_11219",
+        "customfield_13482"
       ],
       "end_date": [
-        "customfield_2"
+        "customfield_10987",
+        "customfield_10887",
+        "customfield_11121",
+        "customfield_10023",
+        "customfield_11220",
+        "customfield_11078"
       ],
       "due_date": [
-        "duedate"
+        "duedate",
+        "customfield_11637",
+        "customfield_11753"
       ],
       "updated": [
         "updated"
@@ -31,7 +421,11 @@
       ],
       "progress": [
         "progress",
-        "aggregateprogress"
+        "aggregateprogress",
+        "customfield_11560",
+        "customfield_11559",
+        "customfield_11505",
+        "customfield_12295"
       ],
       "statuscategorychangedate": [
         "statuscategorychangedate"
@@ -42,7 +436,8 @@
       "epic_link": [
         "Epic Link",
         "epicLink",
-        "parentEpic"
+        "parentEpic",
+        "customfield_10014"
       ]
     }
   }

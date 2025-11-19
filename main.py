@@ -418,7 +418,8 @@ def create_jira_connection(username, password):
         'server': JIRA_URL,
         'headers': {
             'Authorization': f'Basic {base64_credentials}'
-        }
+        },
+        'rest_api_version': 3
     }
     return jira_api(JIRA_URL, options=options)
 
@@ -431,7 +432,40 @@ def fetch_issues(jira_connector, jql_query):
     :return: A list of issues that match the JQL query.
     """
     try:
-        return jira_connector.search_issues(jql_query, maxResults=False, expand='changelog,worklog')
+        # Use direct REST API call to /rest/api/3/search
+        import requests
+        from requests.auth import HTTPBasicAuth
+        # Get credentials from the jira_connector object if possible, else prompt
+        username = getattr(jira_connector, 'username', None)
+        password = getattr(jira_connector, 'password', None)
+        if not username or not password:
+            from get_credentials import get_credentials
+            username, password = get_credentials()
+        url = f"{JIRA_URL}/rest/api/3/search"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "jql": jql_query,
+            "startAt": 0,
+            "maxResults": 100
+        }
+        print(f"Requesting: {url}")
+        print(f"Payload: {payload}")
+        response = requests.post(url, json=payload, headers=headers, auth=HTTPBasicAuth(username, password))
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP error: {e}")
+            print(f"Response body: {response.text}")
+            return []
+        print(f"Response: {response.text}")
+        data = response.json()
+        issues = []
+        for result in data.get("results", []):
+            issues.extend(result.get("issues", []))
+        return issues
     except Exception as e:
         print(f"Error fetching issues: {e}")
         return []
@@ -540,53 +574,12 @@ def generate_timelines_report(issues, fields_map: dict):
                 'end': None,
                 'last_updated': None,
                 'issues': 0,
-                'done': 0,
                 'assignees': set(),
                 'updaters': set(),
                 'progress_vals': [],  # tuples (progress, total)
                 'created_vals': [],
-                'end_candidates': [],
             }
         return agg[scope_key]
-
-    start_fields = (fields_map or {}).get('start_date', [])
-    end_fields = (fields_map or {}).get('end_date', [])
-    due_fields = (fields_map or {}).get('due_date', [])
-
-    for issue in issues:
-        fields = issue.fields
-        proj = getattr(getattr(fields, 'project', None), 'key', None) or 'UNKNOWN'
-        proj_name = getattr(getattr(fields, 'project', None), 'name', proj)
-        epic_key = _get_epic_key(issue, fields_map)
-        epic_name = getattr(fields, 'summary', None) if getattr(fields, 'issuetype', None) and getattr(fields.issuetype, 'name', '') == 'Epic' else None
-        status = getattr(fields, 'status', None)
-        is_done = False
-        try:
-            cat = getattr(getattr(status, 'statusCategory', None), 'key', '') or getattr(getattr(status, 'statusCategory', None), 'name', '')
-            is_done = str(cat).lower() == 'done' or getattr(status, 'name', '').lower() == 'done'
-        except Exception:
-            pass
-
-        assignee = getattr(getattr(fields, 'assignee', None), 'displayName', None)
-        created = _get_field(issue, 'created')
-        updated = _get_field(issue, 'updated')
-        resolutiondate = _get_field(issue, 'resolutiondate')
-        duedate = None
-        for d in ['duedate', *due_fields]:
-            v = _get_field(issue, d)
-            if v:
-                duedate = v
-                break
-
-        # Start candidates: discovered start fields then created
-        start_val = None
-        for sf in start_fields:
-            v = _get_field(issue, sf)
-            if v:
-                start_val = v
-                break
-        if not start_val:
-            start_val = created
 
         # End candidates: discovered end fields, resolutiondate, duedate
         end_val = None
