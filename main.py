@@ -1,5 +1,5 @@
 import calendar
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import holidays
 import getpass
 import base64
@@ -59,6 +59,7 @@ def load_config(path: str = 'config.json') -> dict:
             "monthly_csv_prefix": "monthly_subtask_summary_data",
             "timelines": "timelines.csv",
             "gantt_projects": "gantt_projects.png",
+            "gantt_html": "gantt_projects.html",
         },
         "issue_types": [
             "Bug",
@@ -132,6 +133,7 @@ ENGINEER_NAMES_FILE = _CONFIG.get("data_files", {}).get("engineer_names", "engin
 LEADERBOARD_FILE = _CONFIG.get("data_files", {}).get("leaderboard", "leaderboard.csv")
 TIMELINES_FILE = _CONFIG.get("data_files", {}).get("timelines", "timelines.csv")
 GANTT_FILE = _CONFIG.get("data_files", {}).get("gantt_projects", "gantt_projects.png")
+GANTT_HTML_FILE = _CONFIG.get("data_files", {}).get("gantt_html", "gantt_projects.html")
 CUSTOM_FIELDS = _CONFIG.get("custom_fields", {})
 OFFICE_HOURS = _CONFIG.get("office_hours", {})
 # Search behavior configuration
@@ -165,7 +167,7 @@ ITERATE_PER_PROJECT = str(os.getenv("ITERATE_PER_PROJECT") or SEARCH_CFG.get("it
 # Optionally probe discovered projects to ensure they are accessible (return >=1 issue) before building refined JQL
 PROBE_ACCESSIBLE_PROJECTS = str(os.getenv("PROBE_ACCESSIBLE_PROJECTS") or SEARCH_CFG.get("probe_accessible_projects", True)).lower() in ("1", "true", "yes")
 # Transition debug logging for status changes. Enabled by default; set DEBUG_TRANSITIONS=0 to suppress.
-DEBUG_TRANSITIONS = str(os.getenv("DEBUG_TRANSITIONS") or "1").lower() in ("1", "true", "yes")
+DEBUG_TRANSITIONS = str(os.getenv("DEBUG_TRANSITIONS") or "0").lower() in ("1", "true", "yes")
 # JQL query can be overridden by env var JQL_QUERY for flexibility
 JQL_QUERY = os.getenv("JQL_QUERY") or _CONFIG.get("jql_query", 'ORDER BY Rank')
 
@@ -1075,76 +1077,603 @@ def _get_epic_key(issue, fields_map: dict):
     return None
 
 
+def _to_utc_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize any datetime to a timezone-naive UTC datetime.
+
+    - If dt is timezone-aware, convert to UTC and strip tzinfo.
+    - If dt is naive, return as-is.
+    - If dt is falsy, return None.
+    """
+    if not dt:
+        return None
+    try:
+        if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return dt
+
+
 def _coerce_dt(value):
-    """Best-effort convert a Jira field value (str/datetime) to a datetime object."""
+    """Best-effort convert a Jira field value (str/datetime) to a timezone-naive UTC datetime object."""
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
+        return _to_utc_naive(value)
     try:
-        return _parse_jira_timestamp(value)
+        parsed = _parse_jira_timestamp(value)
+        return _to_utc_naive(parsed)
     except Exception:
         return None
 
 
-def _save_projects_gantt(proj_agg: dict, output_path: str = None):
+def _infer_dates_from_transitions(issue) -> tuple:
     """
-    Render a simple Gantt chart from the project aggregation built by generate_timelines_report.
-    Only projects with at least a start or end date are plotted.
+    Infer (start_dt, end_dt) from changelog status transitions when explicit date
+    fields are missing.
+
+    Heuristics:
+    - start_dt: timestamp of the earliest status change (first history where item.field == 'status').
+      This is robust against varying workflow names, and matches the intent to capture when work began.
+    - end_dt: timestamp of the last transition into a done-like status. We match common terminal states
+      such as 'Done', 'Closed', 'Resolved'. If no such transition exists, end_dt is None.
+
+    Returns (start_dt, end_dt) as naive datetime objects or (None, None) on failure.
     """
-    output_path = output_path or GANTT_FILE
-    rows = []
-    for key, e in proj_agg.items():
-        start = _coerce_dt(e.get('start'))
-        end = _coerce_dt(e.get('end'))
-        # Heuristics for missing values
-        if start is None and end is None:
-            continue
-        if start is None and end is not None:
-            start = end
-        if end is None and start is not None:
-            end = start
-        # Ensure non-zero duration for visibility
-        if end < start:
-            start, end = end, start
-        if end == start:
-            end = start + timedelta(days=1)
-        rows.append((e.get('name') or key, start, end, e.get('percent_done', 0.0)))
-
-    if not rows:
-        return  # nothing to draw
-
-    # Sort by start date
-    rows.sort(key=lambda r: (r[1] or datetime.min))
-
     try:
-        plt.switch_backend('Agg')  # headless-safe
+        histories = getattr(getattr(issue, 'changelog', None), 'histories', None) or []
+    except Exception:
+        histories = []
+    if not histories:
+        return None, None
+
+    # Sort by created ascending using robust parser
+    def _hkey(h):
+        dt = _parse_jira_timestamp(getattr(h, 'created', None))
+        return dt or datetime.min
+
+    histories_sorted = sorted(list(histories), key=_hkey)
+    start_dt = None
+    end_dt = None
+    DONE_STATES = {"done", "closed", "resolved"}
+
+    for idx, h in enumerate(histories_sorted):
+        items = []
+        try:
+            items = list(getattr(h, 'items', []) or [])
+        except Exception:
+            items = []
+        # Determine if this history includes a status change
+        for it in items:
+            try:
+                if getattr(it, 'field', None) != 'status':
+                    continue
+                ts = _parse_jira_timestamp(getattr(h, 'created', None))
+                if ts and start_dt is None:
+                    start_dt = ts
+                to_str = str(getattr(it, 'toString', '') or '').strip()
+                if to_str and to_str.lower() in DONE_STATES:
+                    end_dt = ts  # keep last done-transition seen
+            except Exception:
+                continue
+
+    return start_dt, end_dt
+
+
+def _infer_dates_from_progress_series(points: list, start_dt: Optional[datetime], end_dt: Optional[datetime]) -> tuple:
+    """
+    Infer missing start/end dates from a time series of percent-done points.
+
+    points: list of (datetime, percent_done_float) where percent is in [0, 100].
+    If there are at least two points with different percentages, assume linear
+    progress between them and extrapolate:
+      - If start_dt is None: estimate when percent would have been 0%
+      - If end_dt is None: estimate when percent would reach 100%
+
+    Returns (est_start, est_end, used) where used=True if an estimation was applied.
+    """
+    try:
+        pts = [(d, float(p)) for (d, p) in points if d and p is not None]
+    except Exception:
+        pts = []
+    if len(pts) < 2:
+        return start_dt, end_dt, False
+
+    # Sort ascending by time and pick two endpoints that show a change
+    pts.sort(key=lambda x: x[0])
+    p1 = None
+    p2 = None
+    for i in range(len(pts) - 1, 0, -1):
+        # prefer the latest span with a delta
+        if pts[i][1] != pts[i - 1][1]:
+            p1 = pts[i - 1]
+            p2 = pts[i]
+            break
+    if not p1 or not p2:
+        # fallback: first and last
+        p1, p2 = pts[0], pts[-1]
+        if p2[1] == p1[1]:
+            return start_dt, end_dt, False
+
+    t1, v1 = p1
+    t2, v2 = p2
+    # Clamp percents
+    v1 = max(0.0, min(100.0, v1))
+    v2 = max(0.0, min(100.0, v2))
+    if t2 <= t1:
+        return start_dt, end_dt, False
+    dv = (v2 - v1)
+    if dv == 0:
+        return start_dt, end_dt, False
+
+    span = (t2 - t1)
+    used = False
+    est_start = start_dt
+    est_end = end_dt
+
+    # Linear interpolation/extrapolation on time vs percent
+    # percent(t) ≈ v1 + dv * ((t - t1) / span)
+    # Solve for percent=0 and percent=100
+    try:
+        if est_start is None:
+            factor_to_zero = (0.0 - v1) / dv
+            est_start = t1 + factor_to_zero * span
+            used = True
+        if est_end is None:
+            factor_to_full = (100.0 - v1) / dv
+            est_end = t1 + factor_to_full * span
+            used = True or used
     except Exception:
         pass
 
-    height = max(2, int(0.5 * len(rows)) + 2)
-    fig, ax = plt.subplots(figsize=(12, height))
-    y_pos = range(len(rows))
+    # Sanity: ensure est_start <= est_end and ensure minimal duration if equal
+    if est_start and est_end and est_end < est_start:
+        est_start, est_end = est_end, est_start
+    if est_start and est_end and est_start == est_end:
+        est_end = est_start + timedelta(days=1)
+
+    return est_start or start_dt, est_end or end_dt, used
+
+
+def _save_programme_projects_epics_gantt(proj_agg: dict, epic_agg: dict, output_path: str = None) -> bool:
+    """
+    Render a Gantt chart including Programme (overall span), each Project, and each Project's Epics.
+
+    - Programme: single row spanning min(project.start) to max(project.end)
+    - Project: one row per project
+    - Epic: one row per epic, grouped under its project (by epic key prefix before '-')
+    Only entries with at least start or end date are plotted; 0-duration bars are expanded to 1 day.
+
+    Returns True when a PNG was saved, False when no rows were available to draw.
+    """
+    output_path = output_path or GANTT_FILE
+
+    def _row_from_dates(label: str, start, end, percent=0.0):
+        s = _coerce_dt(start)
+        e = _coerce_dt(end)
+        if s is None and e is None:
+            return None
+        if s is None:
+            s = e
+        if e is None:
+            e = s
+        if e < s:
+            s, e = e, s
+        if e == s:
+            e = s + timedelta(days=1)
+        return (label, s, e, percent)
+
+    # Build project rows and compute programme span
+    proj_rows = []
+    prog_start_candidates = []
+    prog_end_candidates = []
+    for pkey, e in proj_agg.items():
+        r = _row_from_dates(e.get('name') or pkey, e.get('start'), e.get('end'), e.get('percent_done', 0.0))
+        if r:
+            proj_rows.append((pkey, r))
+            prog_start_candidates.append(r[1])
+            prog_end_candidates.append(r[2])
+
+    # Epic rows grouped by project key (prefix before '-')
+    epics_by_project = {}
+    epic_prog_start_candidates = []
+    epic_prog_end_candidates = []
+    for ekey, e in epic_agg.items():
+        label = f"{ekey} (Epic)" if e.get('name') in (None, '', ekey) else f"{ekey} - {e.get('name')}"
+        r = _row_from_dates(label, e.get('start'), e.get('end'), e.get('percent_done', 0.0))
+        if not r:
+            continue
+        pfx = None
+        try:
+            pfx = str(ekey).split('-')[0]
+        except Exception:
+            pfx = None
+        epics_by_project.setdefault(pfx, []).append(r)
+        # Track epic candidates for programme span too, so a chart still renders when projects have no dates
+        epic_prog_start_candidates.append(r[1])
+        epic_prog_end_candidates.append(r[2])
+
+    # Programme row
+    rows = []
+    try:
+        # Include epics when computing Programme span to avoid empty chart when project dates are missing
+        all_start_cands = [d for d in (prog_start_candidates + epic_prog_start_candidates) if d]
+        all_end_cands = [d for d in (prog_end_candidates + epic_prog_end_candidates) if d]
+        prog_start = min(all_start_cands) if all_start_cands else None
+        prog_end = max(all_end_cands) if all_end_cands else None
+    except Exception:
+        prog_start, prog_end = None, None
+    prog_row = _row_from_dates('Programme', prog_start, prog_end, 0.0)
+    if prog_row:
+        rows.append(prog_row)
+
+    # Sort projects by start date
+    proj_rows.sort(key=lambda t: (t[1][1] or datetime.min))
+
+    # Append each project and its epics (sorted by start)
+    if proj_rows:
+        for pkey, r in proj_rows:
+            rows.append(r)
+            epic_rows = epics_by_project.get(pkey, [])
+            epic_rows.sort(key=lambda rr: rr[1] or datetime.min)
+            rows.extend(epic_rows)
+    else:
+        # No usable project rows → still render epics, grouped by their prefix, sorted by earliest start
+        # Sort project prefixes by the earliest start among their epics
+        def group_earliest_start(epic_list):
+            try:
+                return min((rr[1] for rr in epic_list if rr and rr[1]), default=datetime.max)
+            except Exception:
+                return datetime.max
+        for pfx in sorted(epics_by_project.keys(), key=lambda k: group_earliest_start(epics_by_project[k])):
+            epic_rows = epics_by_project.get(pfx, [])
+            epic_rows.sort(key=lambda rr: rr[1] or datetime.min)
+            rows.extend(epic_rows)
+
+    if not rows:
+        # Nothing to draw; emit a small diagnostic and exit gracefully
+        print("Gantt chart generation skipped: no timeline rows (no dated projects or epics)")
+        return False
+
+    try:
+        plt.switch_backend('Agg')
+    except Exception:
+        pass
+
+    height = max(3, int(0.5 * len(rows)) + 2)
+    fig, ax = plt.subplots(figsize=(14, height))
+    y_pos = list(range(len(rows)))
     names = [r[0] for r in rows]
     starts = [mdates.date2num(r[1]) for r in rows]
     durations = [mdates.date2num(r[2]) - mdates.date2num(r[1]) for r in rows]
 
-    ax.barh(list(y_pos), durations, left=starts, height=0.4, color="#4C78A8")
-    ax.set_yticks(list(y_pos))
+    colors = []
+    for name in names:
+        if name == 'Programme':
+            colors.append('#333333')
+        elif '(Epic)' in name:
+            colors.append('#59A14F')
+        else:
+            colors.append('#4C78A8')
+
+    ax.barh(y_pos, durations, left=starts, height=0.4, color=colors)
+    ax.set_yticks(y_pos)
     ax.set_yticklabels(names)
     ax.invert_yaxis()
     ax.xaxis_date()
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    ax.set_title('Programme plan by project')
+    ax.set_title('Programme plan: Programme, Projects, and Epics')
     ax.set_xlabel('Date')
 
     fig.autofmt_xdate()
     fig.tight_layout()
+    # Inform about the resolved output path before saving (helps users locate the file)
+    try:
+        print(f"Saving Gantt chart to: {output_path}")
+    except Exception:
+        pass
     try:
         fig.savefig(output_path, dpi=150)
+        return True
     finally:
         plt.close(fig)
+
+
+def _save_programme_projects_epics_gantt_html(proj_agg: dict, epic_agg: dict, output_path: str = None) -> bool:
+    """
+    Save a browser-friendly, clickable HTML Gantt that includes Programme, Projects, and Epics.
+
+    - Programme: overall span across all project/epic start/end dates (not clickable)
+    - Project rows: link to Jira issues search for that project
+    - Epic rows: link directly to the epic in Jira (browse/<KEY>)
+
+    Returns True if the HTML file was written, False if there were no rows to render.
+    """
+    try:
+        from urllib.parse import quote
+    except Exception:
+        def quote(s):
+            return s
+
+    output_path = output_path or GANTT_HTML_FILE
+
+    # Reuse row building logic similar to PNG path to ensure identical content
+    def _row_from_dates(label: str, start, end, percent=0.0):
+        s = _coerce_dt(start)
+        e = _coerce_dt(end)
+        if s is None and e is None:
+            return None
+        if s is None:
+            s = e
+        if e is None:
+            e = s
+        if e < s:
+            s, e = e, s
+        if e == s:
+            e = s + timedelta(days=1)
+        return (label, s, e, percent)
+
+    proj_rows = []  # (project_key, (label,start,end,percent))
+    prog_start_candidates = []
+    prog_end_candidates = []
+    for pkey, e in proj_agg.items():
+        r = _row_from_dates(e.get('name') or pkey, e.get('start'), e.get('end'), e.get('percent_done', 0.0))
+        if r:
+            proj_rows.append((pkey, r))
+            prog_start_candidates.append(r[1])
+            prog_end_candidates.append(r[2])
+
+    epics_by_project = {}
+    epic_prog_start_candidates = []
+    epic_prog_end_candidates = []
+    for ekey, e in epic_agg.items():
+        label = f"{ekey} (Epic)" if e.get('name') in (None, '', ekey) else f"{ekey} - {e.get('name')}"
+        r = _row_from_dates(label, e.get('start'), e.get('end'), e.get('percent_done', 0.0))
+        if not r:
+            continue
+        pfx = None
+        try:
+            pfx = str(ekey).split('-')[0]
+        except Exception:
+            pfx = None
+        epics_by_project.setdefault(pfx, []).append((ekey, r))  # keep epic key for link
+        epic_prog_start_candidates.append(r[1])
+        epic_prog_end_candidates.append(r[2])
+
+    try:
+        all_start_cands = [d for d in (prog_start_candidates + epic_prog_start_candidates) if d]
+        all_end_cands = [d for d in (prog_end_candidates + epic_prog_end_candidates) if d]
+        prog_start = min(all_start_cands) if all_start_cands else None
+        prog_end = max(all_end_cands) if all_end_cands else None
+    except Exception:
+        prog_start, prog_end = None, None
+
+    # Helper: compute a human-friendly tooltip from an aggregation entry
+    def _make_tooltip(kind: str, key: str, entry: dict, start_dt: Optional[datetime], end_dt: Optional[datetime]) -> str:
+        def fmt_dt(d: Optional[datetime]) -> str:
+            try:
+                return d.strftime('%Y-%m-%d') if d else ''
+            except Exception:
+                return str(d) if d is not None else ''
+
+        # Percent done: prefer cached value, else derive from progress tuples
+        pct = entry.get('percent_done')
+        if pct is None:
+            try:
+                progs = entry.get('progress_vals') or []
+                prog_sum = sum((p or 0) for (p, t) in progs if p is not None)
+                tot_sum = sum((t or 0) for (p, t) in progs if t is not None)
+                pct = (100.0 * prog_sum / tot_sum) if tot_sum else 0.0
+            except Exception:
+                pct = 0.0
+
+        issues = entry.get('issues') or 0
+        done = entry.get('done') or 0
+        assignees = sorted(list(entry.get('assignees') or []))
+        updaters = sorted(list(entry.get('updaters') or []))
+        last_upd = entry.get('last_updated')
+        last_upd = _coerce_dt(last_upd)
+
+        parts = [
+            f"{kind.title()} {key}",
+            f"Start: {fmt_dt(start_dt)}",
+            f"End: {fmt_dt(end_dt)}",
+            f"Percent done: {pct:.2f}%",
+            f"Issues counted: {issues} (Done: {done})",
+        ]
+        if assignees:
+            parts.append(f"Assignees: {', '.join(assignees)}")
+        if updaters:
+            parts.append(f"Updaters: {', '.join(updaters)}")
+        if last_upd:
+            parts.append(f"Last updated: {fmt_dt(last_upd)}")
+        return " | ".join(parts)
+
+    # Build ordered rows list: each item is dict with keys: kind, label, start, end, key(optional), href(optional), color, title
+    rows = []
+    # Programme row (no link)
+    if prog_start and prog_end:
+        rows.append({
+            'kind': 'programme',
+            'label': 'Programme',
+            'start': prog_start,
+            'end': prog_end,
+            'color': '#333333',
+            'title': f"Programme span | Start: {prog_start.date()} | End: {prog_end.date()}"
+        })
+
+    # Sort project rows by start
+    proj_rows.sort(key=lambda t: (t[1][1] or datetime.min))
+
+    def _project_href(pkey: str) -> str:
+        jql = f"project = {pkey}"
+        return f"{JIRA_URL.rstrip('/')}/issues/?jql={quote(jql)}"
+
+    def _epic_href(ekey: str) -> str:
+        return f"{JIRA_URL.rstrip('/')}/browse/{ekey}"
+
+    if proj_rows:
+        for pkey, r in proj_rows:
+            p_entry = proj_agg.get(pkey, {})
+            rows.append({
+                'kind': 'project', 'key': pkey, 'label': r[0], 'start': r[1], 'end': r[2], 'color': '#4C78A8',
+                'href': _project_href(pkey),
+                'title': _make_tooltip('project', pkey, p_entry, r[1], r[2]),
+            })
+            epic_rows = epics_by_project.get(pkey, [])
+            epic_rows.sort(key=lambda rr: rr[1][1] or datetime.min)
+            for ekey, er in epic_rows:
+                e_entry = epic_agg.get(ekey, {})
+                rows.append({
+                    'kind': 'epic', 'key': ekey, 'label': er[0], 'start': er[1], 'end': er[2], 'color': '#59A14F',
+                    'href': _epic_href(ekey),
+                    'title': _make_tooltip('epic', ekey, e_entry, er[1], er[2]),
+                })
+    else:
+        # Group by prefix and sort by earliest start
+        def group_earliest_start(epic_list):
+            try:
+                return min((rr[1][1] for rr in epic_list if rr and rr[1] and rr[1][1]), default=datetime.max)
+            except Exception:
+                return datetime.max
+        for pfx in sorted(epics_by_project.keys(), key=lambda k: group_earliest_start(epics_by_project[k])):
+            epic_rows = epics_by_project.get(pfx, [])
+            epic_rows.sort(key=lambda rr: rr[1][1] or datetime.min)
+            for ekey, er in epic_rows:
+                e_entry = epic_agg.get(ekey, {})
+                rows.append({
+                    'kind': 'epic', 'key': ekey, 'label': er[0], 'start': er[1], 'end': er[2], 'color': '#59A14F',
+                    'href': _epic_href(ekey),
+                    'title': _make_tooltip('epic', ekey, e_entry, er[1], er[2]),
+                })
+
+    if not rows:
+        print("Gantt HTML generation skipped: no timeline rows (no dated projects or epics)")
+        return False
+
+    # Determine overall span for scaling
+    try:
+        min_start = min(r['start'] for r in rows if r.get('start'))
+        max_end = max(r['end'] for r in rows if r.get('end'))
+    except Exception:
+        print("Gantt HTML generation skipped: failed to compute overall span")
+        return False
+    total_days = max(1, (max_end - min_start).days or 1)
+
+    def _pct_pos(dt):
+        return max(0.0, min(100.0, 100.0 * (dt - min_start).total_seconds() / ((max_end - min_start).total_seconds() or 1)))
+
+    def _pct_width(start, end):
+        dur = (end - start).total_seconds()
+        tot = (max_end - min_start).total_seconds() or 1
+        w = 100.0 * dur / tot
+        return max(0.2, w)  # ensure visible minimum width
+
+    # Build HTML
+    lines = []
+    lines.append("<!DOCTYPE html>")
+    lines.append("<meta charset=\"utf-8\">")
+    lines.append("<title>Programme plan: Programme, Projects, and Epics</title>")
+    lines.append("<style> body{font-family:Arial,Helvetica,sans-serif;margin:0} .container{padding:12px} .gantt-header{position:sticky;top:0;background:#fff;padding:12px 12px 8px 12px;border-bottom:1px solid #ddd;z-index:10} .rows{padding:12px} .row{position:relative;margin:6px 0;height:26px;background:#f5f5f5;border-radius:3px;padding-left:24px} .label{position:absolute;left:0;top:-2px;font-size:12px;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis} .bar{position:absolute;height:100%;border-radius:3px;opacity:0.9} a.bar{display:block;text-decoration:none;color:inherit} .legend{margin:6px 0 8px 0} .legend span{display:inline-block;margin-right:12px} .dot{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;vertical-align:middle} .toggle{margin-right:6px;font-size:12px;line-height:18px;padding:2px 6px;cursor:pointer} .controls{margin-top:6px} .epic-row{transition:height 0.2s ease, opacity 0.2s ease} </style>")
+    lines.append("<div class=\"container\">")
+    lines.append("  <div class=\"gantt-header\">")
+    lines.append("    <h3 style=\"margin:0 0 6px 0\">Programme plan: Programme, Projects, and Epics</h3>")
+    # Legend within header
+    lines.append("    <div class=\"legend\">" \
+                 f"<span><span class=\"dot\" style=\"background:#333333\"></span>Programme</span>" \
+                 f"<span><span class=\"dot\" style=\"background:#4C78A8\"></span>Project</span>" \
+                 f"<span><span class=\"dot\" style=\"background:#59A14F\"></span>Epic</span>" \
+                 "</div>")
+    # Date axis summary and controls in header
+    lines.append(f"    <div style=\"font-size:12px;color:#555;margin:4px 0\">Span: {min_start.date()} to {max_end.date()} ({total_days} days)</div>")
+    lines.append("    <div class=\"controls\">\n"
+                 "      <button id=\"expandAll\" class=\"toggle\">Expand all</button>"
+                 "      <button id=\"collapseAll\" class=\"toggle\">Collapse all</button>\n"
+                 "    </div>")
+    lines.append("  </div>")
+    lines.append("  <div class=\"rows\">")
+
+    for r in rows:
+        label = r['label']
+        left = _pct_pos(r['start'])
+        width = _pct_width(r['start'], r['end'])
+        color = r['color']
+        href = r.get('href')
+        title_attr = r.get('title') or ''
+        kind = r.get('kind')
+        attrs = []
+        row_classes = ["row"]
+        # For epics, add data-parent attribute for toggling
+        if kind == 'epic':
+            pfx = (r.get('key') or '').split('-')[0]
+            attrs.append(f'data-parent="{pfx}"')
+            row_classes.append('epic-row')
+        # For projects, add data-project and a toggle control
+        toggle_html = ""
+        if kind == 'project':
+            pkey = r.get('key') or ''
+            attrs.append(f'data-project="{pkey}"')
+            toggle_html = f"<button class=\"toggle\" data-project=\"{pkey}\" aria-expanded=\"true\">▾</button>"
+        attr_str = (" " + " ".join(attrs)) if attrs else ""
+        lines.append(f'<div class="{' '.join(row_classes)}"{attr_str}>')
+        if toggle_html:
+            lines.append(f"  <div class=\"label\">{toggle_html}{label}</div>")
+        else:
+            lines.append(f"  <div class=\"label\">{label}</div>")
+        style = f"left:{left:.3f}%;width:{width:.3f}%;background:{color}"
+        if href:
+            lines.append(f"  <a class=\"bar\" href=\"{href}\" target=\"_blank\" style=\"{style}\" title=\"{title_attr}\"></a>")
+        else:
+            lines.append(f"  <div class=\"bar\" style=\"{style}\" title=\"{title_attr}\"></div>")
+        lines.append('</div>')
+
+    # Close containers and add JS for expand/collapse
+    lines.append("  </div>")  # .rows
+    # Inline JS for toggling
+    lines.append("  <script>\n"
+                 "(function(){\n"
+                 "  function setEpicVisibility(projectKey, show){\n"
+                 "    var rows = document.querySelectorAll('.epic-row[data-parent="' + projectKey + '"]');\n"
+                 "    for (var i=0;i<rows.length;i++){ rows[i].style.display = show ? '' : 'none'; }\n"
+                 "  }\n"
+                 "  function toggleProject(btn){\n"
+                 "    var key = btn.getAttribute('data-project');\n"
+                 "    var expanded = btn.getAttribute('aria-expanded') === 'true';\n"
+                 "    setEpicVisibility(key, !expanded);\n"
+                 "    btn.setAttribute('aria-expanded', (!expanded).toString());\n"
+                 "    btn.textContent = expanded ? '▸' : '▾';\n"
+                 "  }\n"
+                 "  document.addEventListener('click', function(ev){\n"
+                 "    var t = ev.target;\n"
+                 "    if (t && t.classList && t.classList.contains('toggle') && t.hasAttribute('data-project')){\n"
+                 "      ev.preventDefault();\n"
+                 "      toggleProject(t);\n"
+                 "    }\n"
+                 "  });\n"
+                 "  var expandAll = document.getElementById('expandAll');\n"
+                 "  var collapseAll = document.getElementById('collapseAll');\n"
+                 "  if (expandAll) expandAll.addEventListener('click', function(){\n"
+                 "    var buttons = document.querySelectorAll('button.toggle[data-project]');\n"
+                 "    for (var i=0;i<buttons.length;i++){ if (buttons[i].getAttribute('aria-expanded') !== 'true'){ toggleProject(buttons[i]); } }\n"
+                 "  });\n"
+                 "  if (collapseAll) collapseAll.addEventListener('click', function(){\n"
+                 "    var buttons = document.querySelectorAll('button.toggle[data-project]');\n"
+                 "    for (var i=0;i<buttons.length;i++){ if (buttons[i].getAttribute('aria-expanded') !== 'false'){ toggleProject(buttons[i]); } }\n"
+                 "  });\n"
+                 "})();\n"
+                 "  </script>")
+    lines.append("</div>")  # .container
+
+    html = "\n".join(lines)
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"Clickable Gantt HTML saved to {output_path}")
+        return True
+    except Exception as e:
+        print(f"Failed to write Gantt HTML: {e}")
+        return False
 
 
 def _sanitize_jql_order_by(jql: str) -> str:
@@ -1305,6 +1834,7 @@ def generate_timelines_report(issues, fields_map: dict):
                 'assignees': set(),
                 'updaters': set(),
                 'progress_vals': [],  # tuples (progress, total)
+                'progress_timepoints': [],  # tuples (datetime, percent_float)
                 'created_vals': [],
                 'end_candidates': [],
             }
@@ -1338,7 +1868,10 @@ def generate_timelines_report(issues, fields_map: dict):
             if v:
                 duedate = v
                 break
-        # Start
+        # Precompute fallback dates from transitions
+        trans_start, trans_end = _infer_dates_from_transitions(issue)
+
+        # Start selection: explicit field > transitions > created
         start_val = None
         for sf in start_fields:
             v = _get_field(issue, sf)
@@ -1346,8 +1879,9 @@ def generate_timelines_report(issues, fields_map: dict):
                 start_val = v
                 break
         if not start_val:
-            start_val = created
-        # End candidates: discovered end fields, resolutiondate, duedate
+            start_val = trans_start or created
+
+        # End selection: explicit field > transitions (to done) > resolution/duedate
         end_val = None
         for ef in end_fields:
             v = _get_field(issue, ef)
@@ -1355,7 +1889,7 @@ def generate_timelines_report(issues, fields_map: dict):
                 end_val = v
                 break
         if not end_val:
-            end_val = resolutiondate or duedate
+            end_val = trans_end or (resolutiondate or duedate)
         # Progress
         progress = _get_field(issue, 'progress') or _get_field(issue, 'aggregateprogress')
         prog_tuple = None
@@ -1388,13 +1922,27 @@ def generate_timelines_report(issues, fields_map: dict):
         if updater_name:
             pa['updaters'].add(updater_name)
         if start_val:
-            pa['created_vals'].append(start_val)
+            sv = _coerce_dt(start_val)
+            if sv:
+                pa['created_vals'].append(sv)
         if end_val:
-            pa['end_candidates'].append(end_val)
+            ev = _coerce_dt(end_val)
+            if ev:
+                pa['end_candidates'].append(ev)
         if updated:
             pa['last_updated'] = max(filter(None, [pa['last_updated'], updated])) if pa['last_updated'] else updated
         if prog_tuple:
             pa['progress_vals'].append(prog_tuple)
+            # Record a time-stamped percent if possible
+            try:
+                p_raw, t_raw = prog_tuple
+                if t_raw and (t_raw or 0) != 0:
+                    percent = max(0.0, min(100.0, float((p_raw or 0) * 100.0 / (t_raw or 1))))
+                    upd_dt = _coerce_dt(updated)
+                    if upd_dt:
+                        pa['progress_timepoints'].append((upd_dt, percent))
+            except Exception:
+                pass
         # Update epic agg
         if epic_key:
             ea = upd_agg(epic_agg, epic_key, epic_name or epic_key)
@@ -1406,13 +1954,26 @@ def generate_timelines_report(issues, fields_map: dict):
             if updater_name:
                 ea['updaters'].add(updater_name)
             if start_val:
-                ea['created_vals'].append(start_val)
+                sv = _coerce_dt(start_val)
+                if sv:
+                    ea['created_vals'].append(sv)
             if end_val:
-                ea['end_candidates'].append(end_val)
+                ev = _coerce_dt(end_val)
+                if ev:
+                    ea['end_candidates'].append(ev)
             if updated:
                 ea['last_updated'] = max(filter(None, [ea['last_updated'], updated])) if ea['last_updated'] else updated
             if prog_tuple:
                 ea['progress_vals'].append(prog_tuple)
+                try:
+                    p_raw, t_raw = prog_tuple
+                    if t_raw and (t_raw or 0) != 0:
+                        percent = max(0.0, min(100.0, float((p_raw or 0) * 100.0 / (t_raw or 1))))
+                        upd_dt = _coerce_dt(updated)
+                        if upd_dt:
+                            ea['progress_timepoints'].append((upd_dt, percent))
+                except Exception:
+                    pass
 
     def pick_min(values):
         try:
@@ -1451,6 +2012,12 @@ def generate_timelines_report(issues, fields_map: dict):
             e['percent_done'] = percent_done(e)
             e['assignees'] = sorted(list(e['assignees']))
             e['updaters'] = sorted(list(e['updaters']))
+            # If start or end is missing, try inference from progress series
+            if (e['start'] is None or e['end'] is None) and e.get('progress_timepoints'):
+                est_start, est_end, used = _infer_dates_from_progress_series(e['progress_timepoints'], e['start'], e['end'])
+                if used:
+                    e['start'] = est_start or e['start']
+                    e['end'] = est_end or e['end']
 
     # Write CSV
     with open(TIMELINES_FILE, mode='w', newline='') as f:
@@ -1471,11 +2038,46 @@ def generate_timelines_report(issues, fields_map: dict):
             ])
     print(f"Timelines report has been written to {TIMELINES_FILE}")
     # Also render a simple Gantt chart of project timelines for an overview programme plan
+    # If the configured GANTT_FILE is a relative path, place it alongside the timelines CSV
     try:
-        _save_projects_gantt(proj_agg, GANTT_FILE)
-        print(f"Programme plan (projects) Gantt saved to {GANTT_FILE}")
+        gantt_path = GANTT_FILE
+        try:
+            if not os.path.isabs(gantt_path):
+                out_dir = os.path.dirname(os.path.abspath(TIMELINES_FILE)) or os.getcwd()
+                gantt_path = os.path.join(out_dir, gantt_path)
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(gantt_path), exist_ok=True)
+        except Exception:
+            # Fall back to original path if any error occurs resolving directories
+            gantt_path = GANTT_FILE
+
+        saved = _save_programme_projects_epics_gantt(proj_agg, epic_agg, gantt_path)
+        if saved:
+            print(f"Programme plan (programme, projects, epics) Gantt saved to {gantt_path}")
+        else:
+            # _save_programme_projects_epics_gantt already printed a diagnostic; add a short note with target path
+            print(f"Gantt PNG not generated (no rows). Intended output path would have been: {gantt_path}")
     except Exception as e:
         print(f"Gantt chart generation skipped due to error: {e}")
+
+    # Additionally render a clickable HTML version of the same Gantt next to timelines.csv for easy browsing
+    try:
+        gantt_html_path = GANTT_HTML_FILE
+        try:
+            if not os.path.isabs(gantt_html_path):
+                out_dir = os.path.dirname(os.path.abspath(TIMELINES_FILE)) or os.getcwd()
+                gantt_html_path = os.path.join(out_dir, gantt_html_path)
+            os.makedirs(os.path.dirname(gantt_html_path), exist_ok=True)
+        except Exception:
+            gantt_html_path = GANTT_HTML_FILE
+
+        saved_html = _save_programme_projects_epics_gantt_html(proj_agg, epic_agg, gantt_html_path)
+        if saved_html:
+            print(f"Programme plan clickable Gantt HTML saved to {gantt_html_path}")
+        else:
+            print(f"Gantt HTML not generated (no rows). Intended output path would have been: {gantt_html_path}")
+    except Exception as e:
+        print(f"Gantt HTML generation skipped due to error: {e}")
 
 
 def _read_cache(max_age_days: int = CACHE_MAX_AGE_DAYS):

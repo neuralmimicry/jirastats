@@ -1,5 +1,5 @@
 {
-  "timestamp": 1763657819,
+  "timestamp": 1763741563,
   "base_url": "https://virginmediao2.atlassian.net",
   "result": {
     "projects": [
@@ -25,13 +25,69 @@
       "CPNMS",
       "CSWE",
       "CTD",
-      "CTOS",
       "CWT",
       "DBRM",
       "DNTR",
       "DTI"
     ],
-    "epics": [],
+    "epics": [
+      "CPB-3013",
+      "CPB-1159",
+      "CPB-278",
+      "CPAU-977",
+      "CPAU-46",
+      "CMR-940",
+      "CMR-768",
+      "CMR-129",
+      "CMR-58",
+      "CMP-289",
+      "CMDO-110",
+      "CLPB-1379",
+      "CLPB-1293",
+      "CLPB-1292",
+      "CLPB-1202",
+      "CLPB-665",
+      "CLPB-661",
+      "CIBO-81",
+      "CFR-1660",
+      "CFR-1597",
+      "CFR-1468",
+      "CFR-1294",
+      "CFR-1166",
+      "CFR-963",
+      "CFR-415",
+      "CFR-252",
+      "CER-126",
+      "CDBR-419",
+      "CDBR-388",
+      "CDBR-104",
+      "CCP-2494",
+      "CCP-1035",
+      "CCP-767",
+      "CB2B-1356",
+      "CB2B-1296",
+      "CB2B-443",
+      "CB2B-441",
+      "CB2B-440",
+      "CB2B-439",
+      "CB2B-437",
+      "CB2B-436",
+      "CB2B-434",
+      "CB2B-416",
+      "CB2B-415",
+      "CB2B-414",
+      "CB2B-413",
+      "CB2B-410",
+      "CB2B-408",
+      "CB2B-404",
+      "CB2B-403",
+      "CTD-574",
+      "CTD-562",
+      "CTD-557",
+      "CTD-537",
+      "CPB-5834",
+      "CPB-356"
+    ],
     "spaces": [],
     "pages": [
       {
@@ -210,6 +266,27 @@
         "spaceKey": null
       },
       {
+        "id": "6987579465",
+        "title": "QP Checklist",
+        "url": "/spaces/CAT/pages/6987579465/QP+Checklist",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6987481257",
+        "title": "Untitled Diagram-1762785788899.drawio",
+        "url": "/plugins/servlet/ac/com.mxgraph.confluence.plugins.diagramly/customContentViewer?content.plugin=ac%3Acom.mxgraph.confluence.plugins.diagramly%3Adrawio-diagram&space.key=CDNP&content.id=6987481257&content.version=2&space.id=5072158723&content.type=custom",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
+        "id": "6986924090",
+        "title": "MDO Sprint 10",
+        "url": "/spaces/CDNP/whiteboard/6986924090",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
         "id": "6982893606",
         "title": "CR01 - RPA Change Request : Small changes in ART logic",
         "url": "/spaces/DMPO/pages/6982893606/CR01+-+RPA+Change+Request+Small+changes+in+ART+logic",
@@ -224,6 +301,13 @@
         "spaceKey": null
       },
       {
+        "id": "6981845010",
+        "title": "My VM Application Design",
+        "url": "/spaces/HHH/pages/6981845010/My+VM+Application+Design",
+        "extract": null,
+        "spaceKey": null
+      },
+      {
         "id": "6980567129",
         "title": "21/11",
         "url": "/spaces/MOB/pages/6980567129/21+11",
@@ -231,9 +315,9 @@
         "spaceKey": null
       },
       {
-        "id": "6980010058",
-        "title": "Retrospective: MDO Project Sprint 10",
-        "url": "/spaces/CDNP/pages/6980010058/Retrospective+MDO+Project+Sprint+10",
+        "id": "6980108357",
+        "title": "Monthly AWS Call Volumes",
+        "url": "/spaces/CCATAR/pages/6980108357/Monthly+AWS+Call+Volumes",
         "extract": null,
         "spaceKey": null
       },
@@ -355,34 +439,6 @@
         "url": "/spaces/Ada/pages/6945046529/SOHO+-+Solution+Design",
         "extract": null,
         "spaceKey": null
-      },
-      {
-        "id": "6944227340",
-        "title": "13th November 2025",
-        "url": "/spaces/COOP/pages/6944227340/13th+November+2025",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "6943834165",
-        "title": "14/11",
-        "url": "/spaces/MOB/pages/6943834165/14+11",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6943703076",
-        "title": "CallValidate - API Reference Guide v7.29.10.pdf",
-        "url": "/pages/viewpageattachments.action?pageId=6944686097&preview=%2F6944686097%2F6943703076%2FCallValidate+-+API+Reference+Guide+v7.29.10.pdf",
-        "extract": null,
-        "spaceKey": null
-      },
-      {
-        "id": "att6943277177",
-        "title": "staticip-specs.json",
-        "url": "/pages/viewpageattachments.action?pageId=6945046529&preview=%2F6945046529%2F6943277177%2Fstaticip-specs.json",
-        "extract": null,
-        "spaceKey": null
       }
     ],
     "fields": {
@@ -499,94 +555,6 @@
       "Support": 27,
       "Defect Sub-task": 28
     },
-    "diagnostics": {
-      "supplemental_epic_counts": {
-        "CAI": 0,
-        "CB2B": 0,
-        "CCP": 0,
-        "CDBP": 0,
-        "CDBR": 0,
-        "CDNT": 0,
-        "CDS": 0,
-        "CDT": 0,
-        "CER": 0,
-        "CFR": 0,
-        "CIBO": 0,
-        "CLPB": 0,
-        "CMDO": 0,
-        "CMP": 0,
-        "CMR": 0,
-        "CMRP": 0,
-        "CPA": 0,
-        "CPAU": 0,
-        "CPB": 0,
-        "CPNMS": 0,
-        "CSWE": 0,
-        "CTD": 0,
-        "CTOS": 0,
-        "CWT": 0,
-        "DBRM": 0,
-        "DNTR": 0,
-        "DTI": 0
-      },
-      "supplemental_probed_projects": [
-        "CAI",
-        "CB2B",
-        "CCP",
-        "CDBP",
-        "CDBR",
-        "CDNT",
-        "CDS",
-        "CDT",
-        "CER",
-        "CFR",
-        "CIBO",
-        "CLPB",
-        "CMDO",
-        "CMP",
-        "CMR",
-        "CMRP",
-        "CPA",
-        "CPAU",
-        "CPB",
-        "CPNMS",
-        "CSWE",
-        "CTD",
-        "CTOS",
-        "CWT",
-        "DBRM",
-        "DNTR",
-        "DTI"
-      ],
-      "child_issue_epic_counts": {
-        "CAI": 0,
-        "CB2B": 0,
-        "CCP": 0,
-        "CDBP": 0,
-        "CDBR": 0,
-        "CDNT": 0,
-        "CDS": 0,
-        "CDT": 0,
-        "CER": 0,
-        "CFR": 0,
-        "CIBO": 0,
-        "CLPB": 0,
-        "CMDO": 0,
-        "CMP": 0,
-        "CMR": 0,
-        "CMRP": 0,
-        "CPA": 0,
-        "CPAU": 0,
-        "CPB": 0,
-        "CPNMS": 0,
-        "CSWE": 0,
-        "CTD": 0,
-        "CTOS": 0,
-        "CWT": 0,
-        "DBRM": 0,
-        "DNTR": 0,
-        "DTI": 0
-      }
-    }
+    "diagnostics": {}
   }
 }

@@ -210,3 +210,4 @@ __marimo__/
 .discovery_cache.json
 *.png
 
+.idea/

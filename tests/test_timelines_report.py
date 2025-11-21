@@ -56,3 +56,30 @@ def test_generate_timelines_report_writes_csv(tmp_path, monkeypatch):
     for r in project_rows:
         int(r[8])
         int(r[10])
+
+
+def test_generate_timelines_uses_transitions_when_no_dates(tmp_path, monkeypatch):
+    out = tmp_path / "timelines.csv"
+    monkeypatch.setattr(m, "TIMELINES_FILE", str(out))
+
+    # Issue with no explicit start/end/due/resolution but with changelog transitions
+    issue = make_issue(project_key="PRJ", done=True, duedate=None, updated="2025-02-27T10:00:00.000+0000")
+    # Override changelog histories to include To Do -> In Progress -> Done transitions
+    from types import SimpleNamespace as NS
+    histories = [
+        NS(created="2025-02-26T08:00:56.598+0000", items=[NS(field='status', fromString='To Do', toString='In Progress')]),
+        NS(created="2025-08-11T18:48:46.227+0100", items=[NS(field='status', fromString='In Test', toString='Done')]),
+    ]
+    issue.changelog = NS(histories=histories)
+
+    fields_map = {"start_date": [], "end_date": [], "due_date": []}
+    m.generate_timelines_report([issue], fields_map)
+
+    rows = list(csv.reader(out.open()))
+    # Find first project row
+    proj_rows = [r for r in rows[1:] if r[0] == "Project" and r[1] == "PRJ"]
+    assert proj_rows, "Expected project row from transitions-inferred dates"
+    # Columns: [ScopeType, ScopeKey, Name, Start, End, LastUpdated, ...]
+    start_val = proj_rows[0][3]
+    end_val = proj_rows[0][4]
+    assert start_val != "" and end_val != "", "Start/End should be inferred from transitions"
