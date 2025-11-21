@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace as NS
 from unittest.mock import Mock
 
 import main as m
@@ -32,4 +33,13 @@ def test_analyze_issue_transitions_within_office_hours():
         current_time = current_time.replace(minute=0, second=0, microsecond=0)
 
     assert total_seconds == expected
+    assert qa_returns == 0
+
+
+def test_analyze_issue_transitions_handles_missing_histories():
+    # Simulate cached-like issue without changelog/histories
+    issue = NS()
+    # No changelog attribute at all
+    total_seconds, qa_returns = m.analyze_issue_transitions(issue)
+    assert total_seconds == 0
     assert qa_returns == 0

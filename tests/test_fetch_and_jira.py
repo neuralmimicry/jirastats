@@ -5,12 +5,13 @@ import main as m
 def test_fetch_issues_success():
     jira = Mock()
     expected = ["ISSUE-1", "ISSUE-2"]
+    # Simulate single-page result
     jira.search_issues.return_value = expected
     jql = "project = TEST"
 
     issues = m.fetch_issues(jira, jql)
 
-    jira.search_issues.assert_called_once_with(jql, maxResults=False, expand='changelog,worklog')
+    jira.search_issues.assert_called_once_with(jql, startAt=0, maxResults=m.PAGE_SIZE, expand='changelog,worklog')
     assert issues == expected
 
 
@@ -22,7 +23,7 @@ def test_fetch_issues_exception_returns_empty():
     issues = m.fetch_issues(jira, jql)
 
     assert issues == []
-    jira.search_issues.assert_called_once_with(jql, maxResults=False, expand='changelog,worklog')
+    jira.search_issues.assert_called_once_with(jql, startAt=0, maxResults=m.PAGE_SIZE, expand='changelog,worklog')
 
 
 @patch('main.jira_api')

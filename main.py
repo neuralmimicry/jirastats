@@ -8,13 +8,14 @@ import requests
 from fuzzywuzzy import process
 import re
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from jira import JIRA as jira_api
 import os  # For environment variables
 from typing import List, Dict, Optional
 from flask import Flask, request, jsonify
 
 # Discovery for narrowing JQL using Confluence/Jira keywords
-from discover_hierarchy import discover_hierarchy, build_refined_jql
+from discover_hierarchy import discover_hierarchy, build_refined_jql, DEFAULT_CACHE_FILE
 
 app = Flask(__name__)
 
@@ -35,6 +36,7 @@ def webhook():
 # engineers, field IDs, rankings), we load settings from an external JSON config file.
 # Defaults below preserve current behavior if config.json is missing or incomplete.
 import json
+from types import SimpleNamespace as NS
 
 
 def load_config(path: str = 'config.json') -> dict:
@@ -56,6 +58,7 @@ def load_config(path: str = 'config.json') -> dict:
             "leaderboard": "leaderboard.csv",
             "monthly_csv_prefix": "monthly_subtask_summary_data",
             "timelines": "timelines.csv",
+            "gantt_projects": "gantt_projects.png",
         },
         "issue_types": [
             "Bug",
@@ -128,6 +131,7 @@ ISSUE_RANKING = _CONFIG.get("issue_ranking", {})
 ENGINEER_NAMES_FILE = _CONFIG.get("data_files", {}).get("engineer_names", "engineer_names.csv")
 LEADERBOARD_FILE = _CONFIG.get("data_files", {}).get("leaderboard", "leaderboard.csv")
 TIMELINES_FILE = _CONFIG.get("data_files", {}).get("timelines", "timelines.csv")
+GANTT_FILE = _CONFIG.get("data_files", {}).get("gantt_projects", "gantt_projects.png")
 CUSTOM_FIELDS = _CONFIG.get("custom_fields", {})
 OFFICE_HOURS = _CONFIG.get("office_hours", {})
 # Search behavior configuration
@@ -137,6 +141,29 @@ PAGE_SIZE = int(SEARCH_CFG.get("page_size", 100) or 100)
 FAIL_FAST_HTTP = str(os.getenv("FAIL_FAST_HTTP") or SEARCH_CFG.get("fail_fast_http", True)).lower() in ("1", "true", "yes")
 ALLOW_ALT_SHAPES = str(os.getenv("ALLOW_ALT_SHAPES") or SEARCH_CFG.get("allow_alt_shapes", True)).lower() in ("1", "true", "yes")
 DEBUG_SEARCH = str(os.getenv("DEBUG_SEARCH") or SEARCH_CFG.get("debug", False)).lower() in ("1", "true", "yes")
+# Final fallback recency window (days) for bounded queries when refined/base paths return 0
+RECENT_DAYS = int(os.getenv("RECENT_DAYS") or SEARCH_CFG.get("recent_days", 180) or 180)
+# Minimum acceptable number of issues before we relax constraints further (non-zero but too small)
+MIN_RESULTS = int(os.getenv("MIN_RESULTS") or SEARCH_CFG.get("min_results", 20) or 20)
+FORCE_ULTRA_BROAD = str(os.getenv("FORCE_ULTRA_BROAD") or SEARCH_CFG.get("force_ultra_broad", False)).lower() in ("1", "true", "yes")
+# Allow a final extreme-broad attempt with no WHERE clause (ORDER BY created DESC)
+ALLOW_EXTREME_BROAD = str(os.getenv("ALLOW_EXTREME_BROAD") or SEARCH_CFG.get("allow_extreme_broad", True)).lower() in ("1", "true", "yes")
+# Optional additional fallbacks toggles
+ENABLE_USER_SCOPED_FALLBACK = str(os.getenv("ENABLE_USER_SCOPED_FALLBACK") or SEARCH_CFG.get("enable_user_scoped_fallback", True)).lower() in ("1", "true", "yes")
+TRY_CREATED_WINDOW = str(os.getenv("TRY_CREATED_WINDOW") or SEARCH_CFG.get("try_created_window", True)).lower() in ("1", "true", "yes")
+# Optional: avoid ORDER BY Rank, which can be problematic in some instances
+AVOID_RANK_ORDER = str(os.getenv("AVOID_RANK_ORDER") or SEARCH_CFG.get("avoid_rank_order", False)).lower() in ("1", "true", "yes")
+_RFO = (os.getenv("RANK_FALLBACK") or SEARCH_CFG.get("rank_fallback", "created") or "created").strip().lower()
+RANK_FALLBACK = "updated" if _RFO == "updated" else "created"
+# Cache controls for paging and local query support
+ENABLE_CACHE = str(os.getenv("ENABLE_CACHE") or SEARCH_CFG.get("enable_cache", True)).lower() in ("1", "true", "yes")
+ISSUES_CACHE_FILE = (SEARCH_CFG.get("issues_cache") or ".issues_cache.jsonl").strip()
+PREFER_CACHE_FOR_FALLBACKS = str(os.getenv("PREFER_CACHE_FOR_FALLBACKS") or SEARCH_CFG.get("prefer_cache_for_fallbacks", True)).lower() in ("1", "true", "yes")
+CACHE_MAX_AGE_DAYS = int(os.getenv("CACHE_MAX_AGE_DAYS") or SEARCH_CFG.get("cache_max_age_days", 7) or 7)
+# Optional: iterate per project instead of querying all projects at once
+ITERATE_PER_PROJECT = str(os.getenv("ITERATE_PER_PROJECT") or SEARCH_CFG.get("iterate_per_project", False)).lower() in ("1", "true", "yes")
+# Optionally probe discovered projects to ensure they are accessible (return >=1 issue) before building refined JQL
+PROBE_ACCESSIBLE_PROJECTS = str(os.getenv("PROBE_ACCESSIBLE_PROJECTS") or SEARCH_CFG.get("probe_accessible_projects", True)).lower() in ("1", "true", "yes")
 # Transition debug logging for status changes. Enabled by default; set DEBUG_TRANSITIONS=0 to suppress.
 DEBUG_TRANSITIONS = str(os.getenv("DEBUG_TRANSITIONS") or "1").lower() in ("1", "true", "yes")
 # JQL query can be overridden by env var JQL_QUERY for flexibility
@@ -186,7 +213,9 @@ def read_senior_list(filename: str) -> List[Dict[str, Optional[datetime]]]:
                 }
                 senior_list.append(senior_info)
     except Exception as e:
-        print(f"Error reading or parsing the senior names file: {e}")
+        # Non-fatal: proceed without senior filtering if file missing or malformed
+        fname = filename or "engineer_names.csv"
+        print(f"Warning: unable to read '{fname}' ({e}); continuing without senior-based filtering.")
     return senior_list
 
 
@@ -333,10 +362,31 @@ def _parse_jira_timestamp(value) -> Optional[datetime]:
 def get_monthly_worklog_times(issue):
     """
     Gathers worklog times for each month and categorizes them by workstream.
+    Defensive against missing worklog structures (e.g., cached/HTTP-derived issues)
+    by returning an empty mapping when no worklogs are available.
+
     :param issue: The issue from which to extract worklog times.
     :return: A dictionary mapping each month to its aggregated worklog times.
     """
-    worklogs = issue.fields.worklog.worklogs
+    # Safely access fields and worklogs supporting multiple shapes
+    fields = getattr(issue, 'fields', None)
+    if not fields:
+        return {}
+    wl_container = getattr(fields, 'worklog', None)
+    worklogs = []
+    try:
+        if wl_container is None:
+            worklogs = []
+        elif isinstance(wl_container, list):
+            worklogs = wl_container
+        else:
+            worklogs = getattr(wl_container, 'worklogs', None) or []
+    except Exception:
+        worklogs = []
+
+    if not worklogs:
+        return {}
+
     monthly_worklog_times = {}
     # Extract the 'value' from each CustomFieldOption object
     # Use configurable custom field IDs and skill names
@@ -344,33 +394,73 @@ def get_monthly_worklog_times(issue):
     workstream_field_id = CUSTOM_FIELDS.get("workstream_field", "customfield_10952")
     universe_skill_name = CUSTOM_FIELDS.get("universe_skill_name", "UniVerse")
 
-    tech_skills = [option.value for option in (getattr(issue.fields, skills_field_id, None) or [])]
+    # Coerce skills to list and extract values safely
+    def _as_list(x):
+        if x is None:
+            return []
+        return x if isinstance(x, list) else [x]
+
+    try:
+        skill_items = _as_list(getattr(fields, skills_field_id, None))
+    except Exception:
+        skill_items = []
+    tech_skills = []
+    for option in skill_items:
+        try:
+            tech_skills.append(getattr(option, 'value', None) or str(option))
+        except Exception:
+            continue
+
     # Determine if this worklog is for UniVerse work or not (configurable skill name)
     is_universe = universe_skill_name in tech_skills
     # Derive workstream using configurable field ID
-    workstream_field = getattr(issue.fields, workstream_field_id, None)
-    worklog_dev_workstream = workstream_field.value if workstream_field else None  # get dev workstream from custom field
-    if worklog_dev_workstream:
-        worklog_dev_workstream += ' (UniVerse)' if is_universe else ' (non-UniVerse)'
-    # print(worklog_dev_workstream)
+    try:
+        workstream_field = getattr(fields, workstream_field_id, None)
+    except Exception:
+        workstream_field = None
+    if workstream_field is None:
+        base_workstream = None
+    else:
+        try:
+            base_workstream = getattr(workstream_field, 'value', None)
+            if base_workstream is None and not isinstance(workstream_field, (list, dict)):
+                base_workstream = str(workstream_field)
+        except Exception:
+            base_workstream = None
+    ws_suffix = ' (UniVerse)' if is_universe else ' (non-UniVerse)'
+    worklog_dev_workstream = (base_workstream + ws_suffix) if base_workstream else None
+
     for worklog in worklogs:
         started_dt = _parse_jira_timestamp(getattr(worklog, 'started', None))
         if not started_dt:
             # Skip malformed dates rather than raising
             continue
         worklog_date = started_dt.strftime("%Y-%m")
-        worklog_author = worklog.author.displayName  # use display name as key
+        author_obj = getattr(worklog, 'author', None)
+        worklog_author = (
+            getattr(author_obj, 'displayName', None)
+            or getattr(author_obj, 'name', None)
+            or 'Unknown'
+        )
         if worklog_author not in monthly_worklog_times:  # initialize new dictionary for new assignee
             monthly_worklog_times[worklog_author] = {}
         if worklog_date not in monthly_worklog_times[worklog_author]:  # initialize new dictionary for new date
-            monthly_worklog_times[worklog_author][worklog_date] = {'time_spent': 0,
-                                                                   worklog_dev_workstream: {'time_spent': 0}}
-        if worklog_dev_workstream not in monthly_worklog_times[worklog_author][worklog_date]:
+            monthly_worklog_times[worklog_author][worklog_date] = {
+                'time_spent': 0,
+            }
+            # Initialize workstream bucket if we have a name
+            if worklog_dev_workstream:
+                monthly_worklog_times[worklog_author][worklog_date][worklog_dev_workstream] = {'time_spent': 0}
+        # Ensure workstream bucket exists when a name is available
+        if worklog_dev_workstream and worklog_dev_workstream not in monthly_worklog_times[worklog_author][worklog_date]:
             monthly_worklog_times[worklog_author][worklog_date][worklog_dev_workstream] = {'time_spent': 0}
 
         # Correctly increment time_spent at both the date level and the workstream level
-        monthly_worklog_times[worklog_author][worklog_date]['time_spent'] += getattr(worklog, 'timeSpentSeconds', 0) or 0
-        monthly_worklog_times[worklog_author][worklog_date][worklog_dev_workstream]['time_spent'] += getattr(worklog, 'timeSpentSeconds', 0) or 0
+        sec = getattr(worklog, 'timeSpentSeconds', None)
+        sec = 0 if sec is None else sec
+        monthly_worklog_times[worklog_author][worklog_date]['time_spent'] += sec
+        if worklog_dev_workstream:
+            monthly_worklog_times[worklog_author][worklog_date][worklog_dev_workstream]['time_spent'] += sec
     return monthly_worklog_times
 
 
@@ -417,7 +507,23 @@ def analyze_issue_transitions(issue):
     time_to_code = timedelta()
     qa_returns = 0
     in_progress_timestamp = None
-    sorted_histories = sorted(issue.changelog.histories, key=lambda history: history.created, reverse=False)
+
+    # Safely access changelog histories; cached/HTTP-derived shapes may omit them
+    try:
+        histories = getattr(getattr(issue, 'changelog', None), 'histories', None)
+    except Exception:
+        histories = None
+    if not histories:
+        return time_to_code.total_seconds(), qa_returns
+
+    # Sort histories by created timestamp (ascending), tolerating malformed timestamps
+    def _hist_key(h):
+        try:
+            dt = _parse_jira_timestamp(getattr(h, 'created', None))
+            return dt or datetime.min
+        except Exception:
+            return datetime.min
+    sorted_histories = sorted(list(histories), key=_hist_key, reverse=False)
 
     def within_office_hours(dt):
         # Check if the date is a weekday and within office hours, excluding holidays
@@ -426,7 +532,12 @@ def analyze_issue_transitions(issue):
                 dt.date() not in region_holidays)
 
     for history in sorted_histories:
-        for item in history.items:
+        items = []
+        try:
+            items = list(getattr(history, 'items', []) or [])
+        except Exception:
+            items = []
+        for item in items:
             if item.field == 'status':
                 # Always include the transition timestamp for clarity; can be toggled via DEBUG_TRANSITIONS
                 if DEBUG_TRANSITIONS:
@@ -564,16 +675,75 @@ def fetch_issues(jira_connector, jql_query):
     :return: A list of issues that match the JQL query.
     """
     # If user prefers client search, skip HTTP attempts
-    def _client_search_all(jql: str):
-        """Fetch all issues via python-jira client. First try maxResults=False (keeps tests stable),
-        then fall back to explicit pagination if needed.
-        """
-        # Preferred: single call, let client handle pagination
+    def _issue_to_raw(obj):
+        """Best-effort convert a jira Issue or dict into a raw dict suitable for caching."""
         try:
-            issues = jira_connector.search_issues(jql, maxResults=False, expand='changelog,worklog')
-            return list(issues) if not isinstance(issues, list) else issues
+            # python-jira Issue objects usually expose .raw
+            raw = getattr(obj, 'raw', None)
+            if isinstance(raw, dict):
+                return raw
         except Exception:
-            # In test environments we expect exactly one client call; on error, return empty list
+            pass
+        # If it's already a dict (HTTP path), return as-is
+        if isinstance(obj, dict):
+            return obj
+        # Last resort: build a minimal shape from attributes used downstream
+        try:
+            fields = getattr(obj, 'fields', None)
+            changelog = getattr(obj, 'changelog', None)
+            key = getattr(obj, 'key', None)
+            raw_fields = {}
+            if fields:
+                raw_fields = {k: getattr(fields, k) for k in dir(fields) if not k.startswith('_') and not callable(getattr(fields, k))}
+            raw_changes = {}
+            if changelog:
+                raw_changes = {
+                    'histories': getattr(changelog, 'histories', None)
+                }
+            return {'key': key, 'fields': raw_fields, 'changelog': raw_changes}
+        except Exception:
+            return None
+
+    def _cache_append(objs, source_jql: str):
+        if not ENABLE_CACHE or not objs:
+            return
+        try:
+            import time as _time
+            with open(ISSUES_CACHE_FILE, 'a') as f:
+                ts = int(_time.time())
+                for o in objs:
+                    raw = _issue_to_raw(o)
+                    if not isinstance(raw, dict):
+                        continue
+                    rec = {'fetched_at': ts, 'jql': source_jql, 'issue': raw}
+                    try:
+                        f.write(json.dumps(rec) + "\n")
+                    except Exception:
+                        continue
+        except Exception:
+            # best-effort cache; ignore errors
+            pass
+
+    def _client_search_all(jql: str):
+        """Fetch all issues via python-jira client using explicit pagination.
+        This keeps requests small and predictable across instances.
+        """
+        try:
+            start_at = 0
+            results = []
+            while True:
+                page = jira_connector.search_issues(jql, startAt=start_at, maxResults=PAGE_SIZE, expand='changelog,worklog')
+                # python-jira may return a ResultList; coerce to list
+                page_list = list(page) if not isinstance(page, list) else page
+                if page_list:
+                    results.extend(page_list)
+                    # append to cache per page to avoid large memory spikes
+                    _cache_append(page_list, jql)
+                if not page_list or len(page_list) < PAGE_SIZE:
+                    break
+                start_at += PAGE_SIZE
+            return results
+        except Exception:
             return []
 
     if PREFER_CLIENT_SEARCH:
@@ -616,6 +786,7 @@ def fetch_issues(jira_connector, jql_query):
         start_at = 0
         url = f"{JIRA_URL}/rest/api/3/search/jql"
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        attempted_search_endpoint = False
 
         while True:
             # 1) Preferred: POST /search/jql with top-level payload (paginate)
@@ -630,12 +801,39 @@ def fetch_issues(jira_connector, jql_query):
                 issues = parse_issues(data1)
                 if issues:
                     all_issues.extend(issues)
+                    _cache_append(issues, jql_query)
                     if len(issues) < PAGE_SIZE:
                         return all_issues
                     start_at += PAGE_SIZE
                     continue  # next page
                 else:
-                    # no issues, stop
+                    # No issues from /search/jql; try classic /search endpoint once before giving up
+                    if not attempted_search_endpoint:
+                        attempted_search_endpoint = True
+                        search_url = f"{JIRA_URL}/rest/api/3/search"
+                        start_at2 = start_at
+                        while True:
+                            payload_s = {"jql": jql_query, "startAt": start_at2, "maxResults": PAGE_SIZE}
+                            if DEBUG_SEARCH:
+                                print(f"Retrying via classic endpoint: {search_url}")
+                                print(f"Payload: {payload_s}")
+                            resp_s = requests.post(search_url, json=payload_s, headers=headers, auth=auth, params={"expand": "changelog,worklog"})
+                            try:
+                                resp_s.raise_for_status()
+                                data_s = resp_s.json()
+                                issues_s = parse_issues(data_s)
+                                if issues_s:
+                                    all_issues.extend(issues_s)
+                                    _cache_append(issues_s, jql_query)
+                                    if len(issues_s) < PAGE_SIZE:
+                                        return all_issues
+                                    start_at2 += PAGE_SIZE
+                                    continue
+                                else:
+                                    break
+                            except Exception as _:
+                                break
+                    # no issues overall, stop
                     return all_issues
             except requests.exceptions.HTTPError as e1:
                 body = None
@@ -865,7 +1063,224 @@ def _get_epic_key(issue, fields_map: dict):
                 return key
         except Exception:
             pass
+    # Last-resort fallback observed in some instances: parent may reference the Epic
+    # (especially when Epic linking behaves differently). Use parent.key if present.
+    try:
+        parent = _get_field(issue, 'parent') or getattr(getattr(issue, 'fields', None), 'parent', None)
+        pkey = getattr(parent, 'key', None)
+        if isinstance(pkey, str) and pkey:
+            return pkey
+    except Exception:
+        pass
     return None
+
+
+def _coerce_dt(value):
+    """Best-effort convert a Jira field value (str/datetime) to a datetime object."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return _parse_jira_timestamp(value)
+    except Exception:
+        return None
+
+
+def _save_projects_gantt(proj_agg: dict, output_path: str = None):
+    """
+    Render a simple Gantt chart from the project aggregation built by generate_timelines_report.
+    Only projects with at least a start or end date are plotted.
+    """
+    output_path = output_path or GANTT_FILE
+    rows = []
+    for key, e in proj_agg.items():
+        start = _coerce_dt(e.get('start'))
+        end = _coerce_dt(e.get('end'))
+        # Heuristics for missing values
+        if start is None and end is None:
+            continue
+        if start is None and end is not None:
+            start = end
+        if end is None and start is not None:
+            end = start
+        # Ensure non-zero duration for visibility
+        if end < start:
+            start, end = end, start
+        if end == start:
+            end = start + timedelta(days=1)
+        rows.append((e.get('name') or key, start, end, e.get('percent_done', 0.0)))
+
+    if not rows:
+        return  # nothing to draw
+
+    # Sort by start date
+    rows.sort(key=lambda r: (r[1] or datetime.min))
+
+    try:
+        plt.switch_backend('Agg')  # headless-safe
+    except Exception:
+        pass
+
+    height = max(2, int(0.5 * len(rows)) + 2)
+    fig, ax = plt.subplots(figsize=(12, height))
+    y_pos = range(len(rows))
+    names = [r[0] for r in rows]
+    starts = [mdates.date2num(r[1]) for r in rows]
+    durations = [mdates.date2num(r[2]) - mdates.date2num(r[1]) for r in rows]
+
+    ax.barh(list(y_pos), durations, left=starts, height=0.4, color="#4C78A8")
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels(names)
+    ax.invert_yaxis()
+    ax.xaxis_date()
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    ax.set_title('Programme plan by project')
+    ax.set_xlabel('Date')
+
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    try:
+        fig.savefig(output_path, dpi=150)
+    finally:
+        plt.close(fig)
+
+
+def _sanitize_jql_order_by(jql: str) -> str:
+    """Replace trailing ORDER BY Rank with a safer fallback if configured.
+
+    This keeps the WHERE portion intact and only adjusts the ORDER BY clause when it
+    specifically references Rank. Replacement uses RANK_FALLBACK (created/updated) DESC.
+    """
+    try:
+        s = (jql or "").strip()
+        if not s or not AVOID_RANK_ORDER:
+            return jql
+        m = re.search(r"\border\s+by\b(.+)$", s, flags=re.IGNORECASE)
+        if not m:
+            return jql
+        tail = m.group(1)
+        if re.search(r"\brank\b", tail, flags=re.IGNORECASE):
+            # Replace entire ORDER BY with our fallback
+            prefix = s[: m.start()].rstrip()
+            replacement = f" ORDER BY {RANK_FALLBACK} DESC"
+            print(f"ORDER BY Rank replaced with ORDER BY {RANK_FALLBACK} DESC due to AVOID_RANK_ORDER")
+            return f"{prefix}{replacement}".strip()
+        return jql
+    except Exception:
+        return jql
+
+
+def _fetch_sanitized(jira_connector, jql_query):
+    """Wrapper to apply ORDER BY sanitization before fetching issues.
+
+    Additionally, if AVOID_RANK_ORDER is disabled but a query ending with
+    ORDER BY Rank returns zero results, perform a one-shot automatic retry
+    replacing Rank with the configured fallback (created/updated) DESC.
+    This guards against Rank-related index/permission issues without forcing
+    the setting globally.
+    """
+    # First pass (respect global sanitizer setting)
+    safe_jql = _sanitize_jql_order_by(jql_query)
+    issues = fetch_issues(jira_connector, safe_jql)
+    if issues:
+        return issues
+    # One-shot auto-retry when Rank is present and sanitizer did not alter it
+    try:
+        if not issues and not AVOID_RANK_ORDER:
+            s = (jql_query or "").strip()
+            m = re.search(r"\border\s+by\b(.+)$", s, flags=re.IGNORECASE)
+            if m and re.search(r"\brank\b", m.group(1), flags=re.IGNORECASE):
+                prefix = s[: m.start()].rstrip()
+                alt = f"{prefix} ORDER BY {RANK_FALLBACK} DESC".strip()
+                # De-duplicate noisy log spam: print this notice only once per unique JQL
+                try:
+                    # Use a module-level set to track messages we've already printed for a given JQL
+                    global _RANK_AUTO_RETRY_PRINTED
+                except NameError:
+                    _RANK_AUTO_RETRY_PRINTED = set()
+                key = s.lower()
+                if key not in _RANK_AUTO_RETRY_PRINTED:
+                    print(f"Zero results; auto-retrying without Rank ordering → ORDER BY {RANK_FALLBACK} DESC")
+                    _RANK_AUTO_RETRY_PRINTED.add(key)
+                return fetch_issues(jira_connector, alt)
+    except Exception:
+        # Ignore and fall through to empty result
+        pass
+    return issues
+
+
+def _split_where_orderby(jql: str) -> tuple:
+    """Split a JQL into (where_clause_without_order_by, order_by_tail_including_prefix_or_empty).
+
+    Keeps spacing minimal; order_by_tail includes leading space if present (e.g., " ORDER BY created DESC").
+    Returns ("", "") if input is empty.
+    """
+    try:
+        s = (jql or "").strip()
+        if not s:
+            return "", ""
+        m = re.search(r"\border\s+by\b(.+)$", s, flags=re.IGNORECASE)
+        if not m:
+            return s, ""
+        where = s[: m.start()].strip()
+        order_by_tail = " ORDER BY " + m.group(1).strip()
+        return where, order_by_tail
+    except Exception:
+        return jql or "", ""
+
+
+def _build_per_project_jql(base_jql: str, project_key: str) -> str:
+    """Produce a per-project JQL by enforcing project = <key> while preserving other filters and ORDER BY.
+
+    If the WHERE part already contains a project clause (project in (...) or project = X), it is replaced
+    by project = <key>. Otherwise, we prefix WHERE with (project = <key>) AND (<where>).
+    """
+    where, order_by_tail = _split_where_orderby(base_jql)
+    if not project_key:
+        return base_jql
+    try:
+        if where:
+            # Replace "project in (...)" or "project = X" with a single project filter
+            new_where = re.sub(r"\bproject\s+in\s*\([^)]*\)", f"project = {project_key}", where, flags=re.IGNORECASE)
+            new_where2 = re.sub(r"\bproject\s*=\s*[A-Z0-9_\-]+", f"project = {project_key}", new_where, flags=re.IGNORECASE)
+            if new_where2 == where:
+                # No existing project clause; add one
+                where_final = f"project = {project_key}" if not where else f"(project = {project_key}) AND ({where})"
+            else:
+                where_final = new_where2
+        else:
+            where_final = f"project = {project_key}"
+        return (where_final + (order_by_tail or "")).strip()
+    except Exception:
+        return (f"project = {project_key}" + (order_by_tail or "")).strip()
+
+
+def _probe_accessible_projects(jira_connector, projects: list) -> tuple:
+    """Return (filtered_projects, counts_dict) by probing a tiny query per project.
+
+    We run a minimal client call per project: project = KEY ORDER BY created DESC with maxResults=1.
+    A project is considered accessible if the probe returns at least one issue.
+    Any exceptions are treated as zero.
+    """
+    filtered = []
+    counts = {}
+    for p in projects or []:
+        cnt = 0
+        try:
+            jql = f"project = {p} ORDER BY created DESC"
+            res = jira_connector.search_issues(jql, startAt=0, maxResults=1, expand='changelog,worklog')
+            try:
+                cnt = len(res or [])
+            except Exception:
+                cnt = 0
+        except Exception:
+            cnt = 0
+        counts[p] = 1 if cnt > 0 else 0
+        if cnt > 0:
+            filtered.append(p)
+    return filtered, counts
 
 
 def generate_timelines_report(issues, fields_map: dict):
@@ -1055,6 +1470,59 @@ def generate_timelines_report(issues, fields_map: dict):
                 e['issues'], len(e['assignees']), "; ".join(e['assignees']), len(e['updaters']), "; ".join(e['updaters'])
             ])
     print(f"Timelines report has been written to {TIMELINES_FILE}")
+    # Also render a simple Gantt chart of project timelines for an overview programme plan
+    try:
+        _save_projects_gantt(proj_agg, GANTT_FILE)
+        print(f"Programme plan (projects) Gantt saved to {GANTT_FILE}")
+    except Exception as e:
+        print(f"Gantt chart generation skipped due to error: {e}")
+
+
+def _read_cache(max_age_days: int = CACHE_MAX_AGE_DAYS):
+    """Read cached issues (JSONL) and return raw issue dicts within age.
+    Best-effort; returns [] on any error.
+    """
+    if not ENABLE_CACHE:
+        return []
+    try:
+        import time as _time
+        cutoff = int(_time.time()) - max(0, int(max_age_days)) * 24 * 3600
+        out = []
+        with open(ISSUES_CACHE_FILE, 'r') as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                ts = int(rec.get('fetched_at') or 0)
+                if ts >= cutoff and isinstance(rec.get('issue'), dict):
+                    out.append(rec['issue'])
+        return out
+    except Exception:
+        return []
+
+
+def _raw_to_issue(raw: dict):
+    """Convert a raw issue dict (from cache or HTTP) to a lightweight object with .fields/.changelog.
+    Only attributes used by downstream code are provided.
+    """
+    try:
+        key = raw.get('key')
+        fields = raw.get('fields') or {}
+        changelog = raw.get('changelog') or {}
+        # Convert nested dicts into namespaces recursively where needed
+        def to_ns(obj):
+            if isinstance(obj, dict):
+                ns = NS()
+                for k, v in obj.items():
+                    setattr(ns, k, to_ns(v))
+                return ns
+            elif isinstance(obj, list):
+                return [to_ns(v) for v in obj]
+            return obj
+        return NS(key=key, fields=to_ns(fields), changelog=to_ns(changelog))
+    except Exception:
+        return None
 
 
 def leaderboard_sort_key(item):
@@ -1072,29 +1540,335 @@ def main():
     # Connect to JIRA
     jira_connector = create_jira_connection(username, password)
 
+    # Optional: force ultra-broad mode to bypass discovery and fetch anything updated recently
+    if FORCE_ULTRA_BROAD:
+        # Build an updated-only JQL, preserving ORDER BY from base if present
+        base = (JQL_QUERY or "").strip()
+        order_by_tail = ""
+        m_ob = re.search(r"\border\s+by\b(.+)$", base, flags=re.IGNORECASE)
+        if m_ob:
+            order_by_tail = " ORDER BY " + m_ob.group(1).strip()
+        ultra = f"updated >= -{RECENT_DAYS}d" + order_by_tail
+        ultra_safe = _sanitize_jql_order_by(ultra)
+        print(f"Force ultra-broad mode: {ultra_safe}")
+        fetched_issues = _fetch_sanitized(jira_connector, ultra)
+        if fetched_issues:
+            sorted_issues = sort_issues_by_priority(fetched_issues)
+            try:
+                # No discovery fields available; pass empty map
+                generate_timelines_report(sorted_issues, {})
+            except Exception as e:
+                print(f"Timelines report generation failed: {e}")
+            return
+        else:
+            print("Ultra-broad mode returned 0 issues; nothing to report.")
+            return
+
     # Discovery phase: probe Confluence and Jira to narrow scope based on configured keywords
     try:
         discovery_result = discover_hierarchy(jira_connector, JIRA_URL, (username, password), _CONFIG)
+        # Optional: probe discovered projects to ensure they are actually accessible (visible issues exist)
+        try:
+            proj_list = list(getattr(discovery_result, 'projects', []) or [])
+        except Exception:
+            proj_list = []
+        if PROBE_ACCESSIBLE_PROJECTS and proj_list:
+            filtered, counts = _probe_accessible_projects(jira_connector, proj_list)
+            if counts:
+                head = ", ".join(f"{k}:{counts.get(k,0)}" for k in list(counts.keys())[:10])
+                print(f"Project accessibility probe: {len(filtered)} of {len(proj_list)} projects accessible; sample → {head}")
+            # Replace projects with only the accessible subset if any
+            if filtered and len(filtered) != len(proj_list):
+                try:
+                    discovery_result.projects = filtered
+                except Exception:
+                    pass
         refined_jql = build_refined_jql(JQL_QUERY, discovery_result)
         if refined_jql != JQL_QUERY:
             print(f"Refined JQL applied: {refined_jql}")
         else:
             print("No discovery refinement applied; using base JQL.")
+        # Lightweight diagnostics on discovery result
+        try:
+            pj = len(getattr(discovery_result, 'projects', []) or [])
+            ep = len(getattr(discovery_result, 'epics', []) or [])
+            sp = len(getattr(discovery_result, 'spaces', []) or [])
+            pg = len(getattr(discovery_result, 'pages', []) or [])
+            print(f"Discovery summary: projects={pj}, epics={ep}, spaces={sp}, pages={pg}")
+            # If we found projects but zero epics, emit additional diagnostics when available
+            if ep == 0 and pj > 0:
+                diag = getattr(discovery_result, 'diagnostics', {}) or {}
+                supp = diag.get('supplemental_epic_counts') if isinstance(diag, dict) else None
+                if isinstance(supp, dict) and supp:
+                    # Print top projects with their sampled epic counts
+                    items = sorted(supp.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))
+                    head = ", ".join(f"{k}:{v}" for k, v in items[:10])
+                    print(f"Discovery diagnostics: per-project sampled epic counts (top): {head}")
+                else:
+                    print("Discovery diagnostics: no supplemental epic counts available; consider increasing discovery.max_epics_per_project or max_projects_for_epics.")
+                # Also print epics derived from child issues if available
+                child_counts = diag.get('child_issue_epic_counts') if isinstance(diag, dict) else None
+                if isinstance(child_counts, dict) and child_counts:
+                    items2 = sorted(child_counts.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))
+                    head2 = ", ".join(f"{k}:{v}" for k, v in items2[:10])
+                    print(f"Discovery diagnostics: epics derived from child issues (top): {head2}")
+        except Exception:
+            pass
     except Exception as e:
         print(f"Discovery phase failed ({e}); proceeding with base JQL.")
         refined_jql = JQL_QUERY
 
     # Fetch issues using refined JQL (or base if discovery did not change it)
-    fetched_issues = fetch_issues(jira_connector, refined_jql)
+    # If configured, iterate per discovered project to reduce query breadth
+    fetched_issues = []
+    def _merge_unique(dst, src):
+        seen = {getattr(i, 'key', None) or (isinstance(i, dict) and i.get('key')) for i in dst}
+        for it in (src or []):
+            k = getattr(it, 'key', None)
+            if k is None and isinstance(it, dict):
+                k = it.get('key')
+            if k is None or k not in seen:
+                dst.append(it)
+                if k is not None:
+                    seen.add(k)
+
+    if ITERATE_PER_PROJECT:
+        try:
+            proj_list = list(getattr(discovery_result, 'projects', []) or [])
+        except Exception:
+            proj_list = []
+        if proj_list:
+            per_counts = []
+            for p in proj_list:
+                pjql = _build_per_project_jql(refined_jql, p)
+                issues = _fetch_sanitized(jira_connector, pjql)
+                _merge_unique(fetched_issues, issues)
+                per_counts.append((p, len(issues or [])))
+            if per_counts:
+                head = ", ".join(f"{k}:{c}" for k, c in per_counts[:10])
+                print(f"Per-project fetching: {len(proj_list)} projects; sample counts → {head}; total unique issues={len(fetched_issues)}")
+        else:
+            fetched_issues = _fetch_sanitized(jira_connector, refined_jql)
+    else:
+        fetched_issues = _fetch_sanitized(jira_connector, refined_jql)
+
+    # If refined query returned zero but discovery provided projects, automatically
+    # retry by iterating per project even when global ITERATE_PER_PROJECT is disabled.
+    # This reduces breadth and avoids permission or index issues on large project-in filters.
+    if not fetched_issues and refined_jql != JQL_QUERY:
+        try:
+            proj_list = list(getattr(discovery_result, 'projects', []) or [])
+        except Exception:
+            proj_list = []
+        if proj_list:
+            auto_counts = []
+            tmp_issues = []
+            for p in proj_list:
+                pjql = _build_per_project_jql(refined_jql, p)
+                issues = _fetch_sanitized(jira_connector, pjql)
+                _merge_unique(tmp_issues, issues)
+                auto_counts.append((p, len(issues or [])))
+            if auto_counts:
+                head = ", ".join(f"{k}:{c}" for k, c in auto_counts[:10])
+                print(f"Auto per-project retry: {len(proj_list)} projects; sample counts → {head}; total unique issues={len(tmp_issues)}")
+            # Only adopt if we actually found anything
+            if tmp_issues:
+                fetched_issues = tmp_issues
+    # If we got only a tiny set, optionally relax constraints without clearing cache
+    try:
+        current_count = len(fetched_issues or [])
+    except Exception:
+        current_count = 0
+    if refined_jql != JQL_QUERY and current_count > 0 and current_count < MIN_RESULTS:
+        # Try to gently broaden to surface enough data for charts
+        print(f"Only {current_count} issues found from refined query; relaxing constraints to broaden selection (target >= {MIN_RESULTS}).")
+        # Determine ORDER BY tail from refined JQL
+        rb = refined_jql.strip()
+        order_by_tail = ""
+        m_ob = re.search(r"\border\s+by\b(.+)$", rb, flags=re.IGNORECASE)
+        if m_ob:
+            order_by_tail = " ORDER BY " + m_ob.group(1).strip()
+            rb = rb[: m_ob.start()].strip()
+        # If discovery indicates projects-only, first try including all Epics
+        only_projects = False
+        try:
+            only_projects = bool(getattr(discovery_result, 'projects', None)) and not bool(getattr(discovery_result, 'epics', None))
+        except Exception:
+            only_projects = False
+        if only_projects:
+            broadened_core = f"({rb}) OR (issuetype = Epic)" if rb else "issuetype = Epic"
+            broadened_jql = broadened_core + (order_by_tail or "")
+            broadened_safe = _sanitize_jql_order_by(broadened_jql)
+            print(f"Minimal results; attempting relaxed projects+epics query: {broadened_safe}")
+            tmp = _fetch_sanitized(jira_connector, broadened_jql)
+            if tmp and len(tmp) >= max(current_count, MIN_RESULTS):
+                fetched_issues = tmp
+                current_count = len(fetched_issues)
+        # If still below threshold, try recent Epics window
+        if current_count < MIN_RESULTS:
+            epic_recent = f"issuetype = Epic AND updated >= -{RECENT_DAYS}d"
+            epic_recent_jql = epic_recent + (order_by_tail or "")
+            epic_recent_safe = _sanitize_jql_order_by(epic_recent_jql)
+            print(f"Minimal results persist; trying recent Epics window: {epic_recent_safe}")
+            tmp = _fetch_sanitized(jira_connector, epic_recent_jql)
+            if tmp and len(tmp) >= max(current_count, MIN_RESULTS):
+                fetched_issues = tmp
+                current_count = len(fetched_issues)
+        # If still below, try recent delivery types
+        if current_count < MIN_RESULTS:
+            types = "Story, Task, Bug, Improvement, Spike"
+            deliv_recent = f"issuetype in ({types}) AND updated >= -{RECENT_DAYS}d"
+            deliv_recent_jql = deliv_recent + (order_by_tail or "")
+            deliv_recent_safe = _sanitize_jql_order_by(deliv_recent_jql)
+            print(f"Still below threshold; trying recent delivery types window: {deliv_recent_safe}")
+            tmp = _fetch_sanitized(jira_connector, deliv_recent_jql)
+            if tmp and len(tmp) >= max(current_count, MIN_RESULTS):
+                fetched_issues = tmp
+                current_count = len(fetched_issues)
     # If discovery over-constrained the scope, automatically fall back to base JQL
     if not fetched_issues and refined_jql != JQL_QUERY:
-        print("Refined JQL returned 0 issues; retrying with base JQL...")
-        fetched_issues = fetch_issues(jira_connector, JQL_QUERY)
+        # First, clear discovery cache and retry discovery once
+        try:
+            cache_path = os.path.join(os.getcwd(), DEFAULT_CACHE_FILE)
+            if os.path.exists(cache_path):
+                os.remove(cache_path)
+                print(f"Refined JQL returned 0 issues; cleared discovery cache '{DEFAULT_CACHE_FILE}' and retrying discovery...")
+            else:
+                print("Refined JQL returned 0 issues; no discovery cache found to clear. Retrying discovery...")
+        except Exception as e:
+            print(f"Failed to clear discovery cache: {e}. Retrying discovery anyway...")
+
+        # Retry discovery and refined JQL once
+        try:
+            discovery_result = discover_hierarchy(jira_connector, JIRA_URL, (username, password), _CONFIG)
+            refined_jql_retry = build_refined_jql(JQL_QUERY, discovery_result)
+            if refined_jql_retry != JQL_QUERY:
+                print(f"Refined JQL (after cache clear) applied: {refined_jql_retry}")
+            else:
+                print("No discovery refinement after cache clear; using base JQL.")
+        except Exception as e:
+            print(f"Discovery retry failed ({e}); proceeding with base JQL.")
+            refined_jql_retry = JQL_QUERY
+
+        # On retry as well, honor per-project iteration
+        if ITERATE_PER_PROJECT:
+            fetched_issues = []
+            try:
+                proj_list = list(getattr(discovery_result, 'projects', []) or [])
+            except Exception:
+                proj_list = []
+            if proj_list:
+                for p in proj_list:
+                    pjql = _build_per_project_jql(refined_jql_retry, p)
+                    _merge_unique(fetched_issues, _fetch_sanitized(jira_connector, pjql))
+            else:
+                fetched_issues = _fetch_sanitized(jira_connector, refined_jql_retry)
+        else:
+            fetched_issues = _fetch_sanitized(jira_connector, refined_jql_retry)
+
+        # If still nothing, consider a broadened attempt if refinement was projects-only
+        if not fetched_issues and refined_jql_retry != JQL_QUERY:
+            # Determine if discovery yielded only projects (no epics), which can be too narrow
+            only_projects = False
+            try:
+                only_projects = bool(getattr(discovery_result, 'projects', None)) and not bool(getattr(discovery_result, 'epics', None))
+            except Exception:
+                only_projects = False
+
+            if only_projects:
+                # Append a lightweight broadener: include Epics across the instance to surface programme progress
+                # Preserve ORDER BY at the end
+                rb = refined_jql_retry.strip()
+                order_by = ""
+                m = re.search(r"\border\s+by\b(.+)$", rb, flags=re.IGNORECASE)
+                if m:
+                    order_by = " ORDER BY " + m.group(1).strip()
+                    rb = rb[: m.start()].strip()
+                broadened = f"({rb}) OR (issuetype = Epic)".strip()
+                broadened_jql = f"{broadened}{order_by}" if order_by else broadened
+                broadened_safe = _sanitize_jql_order_by(broadened_jql)
+                print(f"Refined JQL returned 0 issues again; attempting a broadened query: {broadened_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, broadened_jql)
+
+        # Final bounded fallbacks focusing on recent activity to surface something useful
+        if not fetched_issues and refined_jql_retry != JQL_QUERY:
+            # Use ORDER BY from base JQL if any
+            order_by_tail = ""
+            try:
+                bj = (JQL_QUERY or "").strip()
+                m2 = re.search(r"\border\s+by\b(.+)$", bj, flags=re.IGNORECASE)
+                if m2:
+                    order_by_tail = " ORDER BY " + m2.group(1).strip()
+            except Exception:
+                pass
+
+            # Attempt epics updated recently across the instance
+            epic_recent = f"issuetype = Epic AND updated >= -{RECENT_DAYS}d"
+            epic_recent_jql = epic_recent + order_by_tail
+            epic_recent_safe = _sanitize_jql_order_by(epic_recent_jql)
+            print(f"No results yet; trying recent Epics window: {epic_recent_safe}")
+            fetched_issues = _fetch_sanitized(jira_connector, epic_recent_jql)
+
+            # If still empty, attempt common delivery types recently updated
+            if not fetched_issues:
+                types = "Story, Task, Bug, Improvement, Spike"
+                deliv_recent = f"issuetype in ({types}) AND updated >= -{RECENT_DAYS}d"
+                deliv_recent_jql = deliv_recent + order_by_tail
+                deliv_recent_safe = _sanitize_jql_order_by(deliv_recent_jql)
+                print(f"Still empty; trying recent delivery types window: {deliv_recent_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, deliv_recent_jql)
+
+            # If still empty, attempt created-window instead of updated-window
+            if not fetched_issues and TRY_CREATED_WINDOW:
+                created_only = f"created >= -{RECENT_DAYS}d" + order_by_tail
+                created_safe = _sanitize_jql_order_by(created_only)
+                print(f"Still empty; trying created window: {created_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, created_only)
+
+            # If still empty, attempt ultra-broad updated-only window
+            if not fetched_issues:
+                ultra = f"updated >= -{RECENT_DAYS}d" + order_by_tail
+                ultra_safe = _sanitize_jql_order_by(ultra)
+                print(f"Still empty; trying ultra-broad updated window: {ultra_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, ultra)
+
+            # If still empty, attempt user-scoped recent activity (assignee/reporter)
+            if not fetched_issues and ENABLE_USER_SCOPED_FALLBACK:
+                user_scoped = (
+                    f"(assignee = currentUser() OR reporter = currentUser()) AND updated >= -{RECENT_DAYS}d"
+                    + order_by_tail
+                )
+                user_scoped_safe = _sanitize_jql_order_by(user_scoped)
+                print(f"Still empty; trying user-scoped recent activity: {user_scoped_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, user_scoped)
+
+            # If still empty, attempt an extreme-broad query with no WHERE clause
+            if not fetched_issues and ALLOW_EXTREME_BROAD:
+                extreme = "ORDER BY created DESC"
+                extreme_safe = _sanitize_jql_order_by(extreme)
+                print(f"Still empty; trying extreme-broad no-filter query: {extreme_safe}")
+                fetched_issues = _fetch_sanitized(jira_connector, extreme)
+
+        # If still nothing, fall back to base JQL as before
+        if not fetched_issues and refined_jql_retry != JQL_QUERY:
+            print("Refined JQL returned 0 issues again; retrying with base JQL...")
+            fetched_issues = _fetch_sanitized(jira_connector, JQL_QUERY)
     if fetched_issues:
         sorted_issues = sort_issues_by_priority(fetched_issues)
     else:
-        print("No issues found")
-        return
+        # Before giving up, try to use locally cached issues if enabled
+        if PREFER_CACHE_FOR_FALLBACKS and ENABLE_CACHE:
+            cached_raw = _read_cache(CACHE_MAX_AGE_DAYS)
+            cached_objs = [o for o in (_raw_to_issue(r) for r in cached_raw) if o]
+            if cached_objs:
+                print(f"Remote queries returned 0 issues; using {len(cached_objs)} cached issues from {ISSUES_CACHE_FILE} (<= {CACHE_MAX_AGE_DAYS} days)")
+                sorted_issues = sort_issues_by_priority(cached_objs)
+            else:
+                print("No issues found")
+                return
+        else:
+            print("No issues found")
+            return
 
     # Generate high-level timelines and resource usage report using discovered fields
     try:
@@ -1112,9 +1886,25 @@ def main():
 
     # Loop through all issues and aggregate data
     for issue in sorted_issues:
-        issue_type = issue.fields.issuetype.name
+        # Be defensive: cached or alternative shapes may miss issuetype/name
+        try:
+            fields_obj = getattr(issue, 'fields', None)
+        except Exception:
+            fields_obj = None
+        try:
+            issue_type = getattr(getattr(fields_obj, 'issuetype', None), 'name', None)
+        except Exception:
+            issue_type = None
+        if not issue_type:
+            issue_type = 'Unknown'
         # print(f'{issue.key}, {issue.fields.customfield_10104}')
-        assignee = issue.fields.assignee.displayName if issue.fields.assignee else 'Unassigned'
+        # Assignee name, tolerant to missing structures
+        try:
+            assignee = getattr(getattr(fields_obj, 'assignee', None), 'displayName', None)
+            if not assignee:
+                assignee = 'Unassigned'
+        except Exception:
+            assignee = 'Unassigned'
         # Ensure initialization for each assignee
         if assignee not in summary_data:
             summary_data[assignee] = {}
@@ -1126,11 +1916,38 @@ def main():
         skills_field_id = CUSTOM_FIELDS.get("skills_field", "customfield_10900")
         workstream_field_id = CUSTOM_FIELDS.get("workstream_field", "customfield_10952")
         universe_skill_name = CUSTOM_FIELDS.get("universe_skill_name", "UniVerse")
-        tech_skills = [option.value for option in (getattr(issue.fields, skills_field_id, None) or [])]
+        # Safely coerce skills field to list of items with .value when possible
+        def _as_list(x):
+            if x is None:
+                return []
+            return x if isinstance(x, list) else [x]
+        try:
+            skill_items = _as_list(getattr(fields_obj, skills_field_id, None))
+        except Exception:
+            skill_items = []
+        tech_skills = []
+        for option in skill_items:
+            try:
+                val = getattr(option, 'value', None)
+                tech_skills.append(val if val is not None else str(option))
+            except Exception:
+                continue
         # Determine if this worklog is for UniVerse work or not
         is_universe = universe_skill_name in tech_skills
-        workstream_field = getattr(issue.fields, workstream_field_id, None)
-        workstream = workstream_field.value if workstream_field else None  # get dev workstream from custom field
+        try:
+            workstream_field = getattr(fields_obj, workstream_field_id, None)
+        except Exception:
+            workstream_field = None
+        # Accept either an object with .value or a primitive
+        if workstream_field is None:
+            workstream = None
+        else:
+            try:
+                workstream = getattr(workstream_field, 'value', None)
+                if workstream is None and not isinstance(workstream_field, (list, dict)):
+                    workstream = str(workstream_field)
+            except Exception:
+                workstream = None
         if workstream:
             workstream += ' (UniVerse)' if is_universe else ' (non-UniVerse)'
 
@@ -1147,6 +1964,9 @@ def main():
                     summary_data[worklog_assignee][month][workstream] = {'time_spent': 0, 'time_remaining': 0}
 
                 # Update counts and time for the issue's month
+                # If encountering an unknown issue type, initialize it on the fly
+                if issue_type not in summary_data[worklog_assignee][month]:
+                    summary_data[worklog_assignee][month][issue_type] = 0
                 summary_data[worklog_assignee][month][issue_type] += 1
                 summary_data[worklog_assignee][month]['time_spent'] += time_spent_seconds['time_spent']
                 summary_data[worklog_assignee][month][workstream]['time_spent'] += time_spent_seconds['time_spent']

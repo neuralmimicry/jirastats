@@ -13,9 +13,44 @@ def test_extract_issue_keys_from_pages():
     pages = [
         {"title": "Work on ABC-123 and XYZ-9", "extract": ""},
         {"title": "No keys", "extract": "See PRJ-1 details"},
+        {"title": "Quarter plan Q1-2026 and FY24-10 should not match", "extract": ""},
     ]
     keys = dh._extract_issue_keys_from_pages(pages)  # noqa: SLF001
     assert keys == ["ABC-123", "XYZ-9", "PRJ-1"]
+
+
+def test_validate_epic_keys_filters_invalid(monkeypatch):
+    # Simulate that only PRJ-1 and ABC-2 exist as Epics; bogus keys should be filtered out
+    jira = Mock()
+
+    # search_issues will be called twice in _probe_jira (for epics by keywords) and in validation batch
+    # We'll simulate validation call by returning only valid epics when JQL contains "key in"
+    def fake_search_issues(jql, maxResults=50):
+        class I:  # simple issue with key attr
+            def __init__(self, k):
+                self.key = k
+
+        if "key in" in jql and "issuetype = Epic" in jql:
+            return [I("PRJ-1"), I("ABC-2")]
+        # For epic discovery by keywords, return empty to rely on page extraction
+        return []
+
+    jira.search_issues = Mock(side_effect=fake_search_issues)
+    jira.projects = Mock(return_value=[])
+    jira.fields = Mock(return_value=[])
+    # Pages include mix of valid and bogus keys
+    pages = [
+        {"title": "Roadmap PRJ-1", "extract": "See ABC-2"},
+        {"title": "Q1-2026", "extract": "FY24-10"},
+    ]
+
+    # Patch _probe_confluence to return our pages and spaces
+    monkeypatch.setattr(dh, "_probe_confluence", lambda base, auth, cfg: ([], pages))
+
+    # Use a unique base URL to avoid sharing the discovery cache with other tests
+    res = dh.discover_hierarchy(jira, "https://unique-test.atlassian.net", ("u", "p"), {"discovery": {"enabled": True}})
+    # Only validated epics should remain
+    assert sorted(res.epics) == ["ABC-2", "PRJ-1"]
 
 
 def test_build_refined_jql_combines_filters():
@@ -51,6 +86,14 @@ def test_discover_hierarchy_smoke(requests_get):
         {"id": "customfield_2", "name": "End date"},
         {"id": "duedate", "name": "Due date"},
     ]
+    # Provide issue types discovery via client
+    jira.issue_types.return_value = [NS(name="Epic"), NS(name="Story"), NS(name="Task"), NS(name="Bug"), NS(name="Sub-task")]
 
     res = dh.discover_hierarchy(jira, "https://example.atlassian.net", ("u", "p"), {"discovery": {"enabled": True}})
     assert "start_date" in res.fields and res.projects == ["PRJ"] and "PRJ-1" in res.epics
+    # Validate issue types discovery and ranking
+    assert res.issue_types, "Expected discovered issue types"
+    assert res.issue_ranking, "Expected inferred issue ranking"
+    # Epic should rank ahead of Story/Task/Sub-task if present
+    if "Epic" in res.issue_ranking and "Sub-task" in res.issue_ranking:
+        assert res.issue_ranking["Epic"] < res.issue_ranking["Sub-task"]

@@ -21,8 +21,11 @@ class TestFetchIssues(unittest.TestCase):
         issues = fetch_issues(mock_jira_connector, jql_query)
 
         # Assertions to ensure it returns the correct issues
-        mock_jira_connector.search_issues.assert_called_once_with(jql_query, maxResults=False,
-                                                                  expand='changelog,worklog')
+        # With paginated client path we now call with startAt/maxResults
+        import main as m
+        mock_jira_connector.search_issues.assert_called_once_with(
+            jql_query, startAt=0, maxResults=m.PAGE_SIZE, expand='changelog,worklog'
+        )
         self.assertEqual(issues, expected_issues)
 
     def test_fetch_issues_with_exception(self):
@@ -38,8 +41,10 @@ class TestFetchIssues(unittest.TestCase):
 
         # Assertions to check the function handles exceptions correctly
         self.assertEqual(issues, [])
-        mock_jira_connector.search_issues.assert_called_once_with(jql_query, maxResults=False,
-                                                                  expand='changelog,worklog')
+        import main as m
+        mock_jira_connector.search_issues.assert_called_once_with(
+            jql_query, startAt=0, maxResults=m.PAGE_SIZE, expand='changelog,worklog'
+        )
 
 
 if __name__ == '__main__':
