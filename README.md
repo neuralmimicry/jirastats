@@ -1,5 +1,13 @@
 # JiraStats
 
+## Sponsor NeuralMimicry
+
+JiraStats is an open-source reporting toolkit for Jira and Confluence — discovery-driven JQL refinement, throughput analysis, timeline reporting, and LLM-backed insights, all configuration-driven and reusable across organisations. NeuralMimicry is an independent open-source initiative and we rely on community support to sustain this work.
+
+**[☕ Support us on Crowdfunder](https://www.crowdfunder.co.uk/p/qr/aWggxwPW?utm_campaign=sharemodal&utm_medium=referral&utm_source=shortlink)**
+
+---
+
 A lightweight reporting toolkit for Jira that discovers relevant scope (projects, epics) from Jira/Confluence, fetches only the necessary data, and produces CSV reports and charts on throughput, timelines, and resource usage.
 
 Key aspects:
@@ -32,10 +40,17 @@ This repository ships with a default config.json at the project root. You can ta
 
 Example config.json
 {
-  "company": {
-    "name": "Your Company Name",
-    "jira_url": "https://your-domain.atlassian.net"
-  },
+  "instances": [
+    {
+      "name": "Instance A",
+      "jira_url": "https://instance-a.atlassian.net",
+      "confluence_url": "https://instance-a.atlassian.net/wiki"
+    },
+    {
+      "name": "Instance B",
+      "jira_url": "https://instance-b.atlassian.net"
+    }
+  ],
   "data_files": {
     "engineer_names": "engineer_names.csv",
     "leaderboard": "leaderboard.csv",
@@ -67,7 +82,7 @@ Example config.json
 }
 
 Notes
-- company.jira_url sets the Jira base URL used by the API client.
+- instances: List of Jira/Confluence instances to query. Each instance needs `name` and `jira_url`, and optionally `confluence_url`.
 - data_files.* control input/output filenames (including timelines.csv and gantt_projects.png).
 - custom_fields.* let you map instance-specific field IDs once, instead of changing code.
 - office_hours define the workday and holiday region. Supported codes include GB/UK, US, CA, DE, FR; unknown codes fall back to GB.
@@ -119,9 +134,12 @@ Sorting configuration
 
 
 ## Environment variables
-- JIRA_USERNAME: Jira username (email for Atlassian Cloud)
-- JIRA_PASSWORD: Jira API token or password (API token recommended)
-  - Note: The Jira client now authenticates using python-jira's basic_auth, which works reliably with Atlassian Cloud. Use an API token with your Atlassian account email.
+- JIRA_USERNAME: Default Jira username (email for Atlassian Cloud)
+- JIRA_PASSWORD: Default Jira API token or password
+- For multiple instances, you can use instance-specific overrides:
+  - `JIRA_USERNAME_<INSTANCE_NAME>`
+  - `JIRA_PASSWORD_<INSTANCE_NAME>`
+  - (The instance name should be normalized: uppercase, spaces/dashes replaced by underscores, e.g., `JIRA_USERNAME_INSTANCE_A`)
 - JQL_QUERY: Optional base JQL; overrides config.json:jql_query
 - DISCOVERY_KEYWORDS: Optional comma-separated override for discovery.keywords
 - DISCOVERY_DISABLE: If set to 1/true/yes, disables discovery regardless of config
@@ -132,6 +150,9 @@ Sorting configuration
  - FORCE_ULTRA_BROAD: If set to 1/true/yes, bypass discovery and directly run a broad query: updated >= -RECENT_DAYS (ORDER BY preserved).
  - ENABLE_USER_SCOPED_FALLBACK: If set to 0/false/no, disables the user-scoped recent activity fallback.
  - TRY_CREATED_WINDOW: If set to 0/false/no, disables the created >= -RECENT_DAYS fallback.
+ - LLM_TIMEOUT_SECONDS: Override the default 60-second timeout for LLM requests (e.g. 300 for Ollama).
+ - GOOGLE_API_KEY: Google Search API Key.
+ - GOOGLE_CSE_ID: Google Search Engine ID (CX).
   - AVOID_RANK_ORDER: If set to 1/true/yes, replaces trailing "ORDER BY Rank" with "ORDER BY <rank_fallback> DESC" in constructed queries.
   - RANK_FALLBACK: Field name to use when replacing Rank; supports "created" or "updated". Defaults to "created".
   - ENABLE_CACHE: If set to 0/false/no, disables on-disk cache of fetched issues.
@@ -139,6 +160,63 @@ Sorting configuration
   - CACHE_MAX_AGE_DAYS: Override max age for using cached issues.
   - ITERATE_PER_PROJECT: If set to 1/true/yes, enable per-project iteration of refined queries as described above.
   - PROBE_ACCESSIBLE_PROJECTS: If set to 0/false/no, disables the post-discovery project accessibility probe described above.
+
+  ### Jira insights (optional)
+  If you use the Jira quality report with LLM-backed insights, you can optionally include linked Confluence content in the analysis and tune limits/concurrency via `jira_insights` in `config.json`:
+
+  Example `jira_insights` block
+  ```
+  {
+    "jira_insights": {
+      "include_confluence": true,
+      "max_confluence_pages_per_issue": 3,
+      "max_confluence_chars_per_page": 5000,
+      "max_parallel_confluence_fetches": 4
+    }
+  }
+  ```
+
+  ### Topic Research
+  The tool can also perform iterative research on a specific topic and requirements, gathering data from Jira, Confluence, LLMs, and simulated web search to formulate a comprehensive document in professional British English.
+
+  ```bash
+  jirastats --topic-research topic_requirements.txt --context https://example.com/context --context local_doc.pdf --output researched_doc.md --llm-provider openai
+  ```
+
+  - `--topic-research`: Path or URL to a file containing a topic (first line) and requirements (remaining lines). Supports `.txt`, `.docx`, `.pdf`, `.odf`, `.html`, `.jpg`, `.png`, `.svg`, `.mp3`, and `.mp4`.
+  - `--context`: (Optional) Additional URLs or file paths to provide context, relevance, boundaries, and focus. Supports the same formats as `--topic-research`. Can be specified multiple times.
+  - `--max-iterations`: (Optional) Maximum refinement loops (default: 3).
+  - `--llm-timeout`: (Optional) Timeout in seconds for LLM requests (can also be set via `LLM_TIMEOUT_SECONDS` environment variable).
+  - Uses existing Jira and Confluence connectivity settings.
+  - Features an agentic debate loop where LLMs act as both critic and editor to polish the final document.
+  - Integration with Google Search:
+    - Automatically performs real web searches if credentials are provided.
+    - Fetches and analyzes the full content of relevant search result URLs.
+
+  ### Logging and Progress Monitoring
+  The tool provides detailed status updates and debug logging to monitor progress in real-time and analyze execution afterwards.
+
+  ```bash
+  # Standard run with real-time status updates
+  jirastats --topic-research req.txt --output report.md
+
+  # Verbose run (includes INFO level logs)
+  jirastats --topic-research req.txt --output report.md --verbose
+
+  # Debug run (detailed logs for all API and LLM calls)
+  jirastats --topic-research req.txt --output report.md --debug --log-file my_research.log
+  ```
+
+  - `--verbose` (-v): Enables INFO level status updates on the console.
+  - `--debug` (-d): Enables detailed DEBUG level logging, including truncated LLM payloads and API interactions.
+  - `--log-file`: Path to the file where all logs (up to DEBUG level) are saved (default: `jirastats.log`).
+  - Status updates prefixed with `[*]` are shown on the console during long-running tasks like Topic Research.
+
+  Settings
+  - `include_confluence` (bool, default: true): When true, if an issue description links to Confluence pages, their text will be fetched and appended as authoritative context for the LLM.
+  - `max_confluence_pages_per_issue` (int, default: 3): Upper bound on the number of linked Confluence pages to fetch per issue.
+  - `max_confluence_chars_per_page` (int, default: 5000): Per-page character cap after stripping HTML; longer pages are truncated for cost/latency control.
+  - `max_parallel_confluence_fetches` (int, default: 4): Small thread-pool size used to fetch linked pages concurrently per issue to reduce wall-clock latency while keeping load bounded.
 
 Optional inputs
 - engineer_names.csv: If present (path configured via data_files.engineer_names), the report will use it to determine active seniors by time window. If absent, the tool continues normally and skips senior-based filtering with a short warning.
