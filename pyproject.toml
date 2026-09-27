@@ -9,7 +9,7 @@ description = "Jira reporting and analytics utilities with discovery-driven JQL 
 readme = "README.md"
 authors = [{ name = "JiraStats Maintainers" }]
 license = { file = "LICENSE" }
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 keywords = ["jira", "reporting", "analytics", "confluence", "worklogs"]
 classifiers = [
   "Programming Language :: Python :: 3",
