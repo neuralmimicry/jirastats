@@ -214,3 +214,25 @@ __marimo__/
 .idea/
 .*.jsonl
 .vscode/
+
+# Local credentials, caches, generated research outputs, and request materials
+/credentials.py
+/setupvars.sh
+/.confluence_cache/
+/.research_cache/
+/.output.txt
+/confluence_report.html
+/jira_report.html
+/kpis.html
+/kpi_report.md
+/kpireq.md
+/output.md
+/reference_report.md
+/refreq.md
+/test_report.md
+/testreq.md
+/test_fallback.txt
+/test_topic.txt
+/req.txt
+/req11.txt
+/reqkpi.txt
